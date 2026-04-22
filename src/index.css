@@ -1,0 +1,115 @@
+@import "tailwindcss";
+
+@theme {
+  --color-miami-pink:   #ff007f;
+  --color-miami-cyan:   #00f0ff;
+  --color-miami-purple: #7000ff;
+  --color-miami-dark:   #0a0a0a;
+
+  --font-sans: 'Inter', system-ui, sans-serif;
+
+  /*
+   * Slightly larger text for readability on mobile screens.
+   * Bumping only the small utility sizes; base and above are unchanged.
+   *   text-xs:  12px → 13px
+   *   text-sm:  14px → 15px
+   */
+  --text-xs: 0.8125rem;   /* 13px */
+  --text-sm: 0.9375rem;   /* 15px */
+
+  /*
+   * Gray palette override — shifted ~1 stop lighter than Tailwind defaults
+   * so that data labels, secondary text, and input borders are easier to read
+   * on the near-black backgrounds used throughout the app.
+   *
+   * Default Tailwind gray-400 = #9ca3af  →  we make it #b0b8c4  (was gray-300ish)
+   * Default Tailwind gray-500 = #6b7280  →  we make it #8b95a1  (was ~gray-400)
+   * Default Tailwind gray-600 = #4b5563  →  we make it #5f6b7a  (was ~gray-500)
+   * Default Tailwind gray-700 = #374151  →  we make it #455060
+   * Default Tailwind gray-800 = #1f2937  →  we make it #28333f  (keeps cards dark)
+   * Default Tailwind gray-900 = #111827  →  we make it #16202a  (keeps backgrounds dark)
+   */
+  --color-gray-50:  #f9fafb;
+  --color-gray-100: #f1f4f7;
+  --color-gray-200: #dce2e8;
+  --color-gray-300: #c4cdd6;
+  --color-gray-400: #b0b8c4;
+  --color-gray-500: #8b95a1;
+  --color-gray-600: #5f6b7a;
+  --color-gray-700: #455060;
+  --color-gray-800: #28333f;
+  --color-gray-900: #16202a;
+  --color-gray-950: #0d161f;
+}
+
+body {
+  background-color: var(--color-miami-dark);
+  color: white;
+  margin: 0;
+  padding: 0;
+  /* Prevent iOS bounce scroll on the body */
+  overscroll-behavior: none;
+}
+
+/* iOS safe-area utilities */
+.pb-safe  { padding-bottom: env(safe-area-inset-bottom, 0px); }
+.pt-safe  { padding-top:    env(safe-area-inset-top,    0px); }
+.h-dvh    { height: 100dvh; }   /* dynamic viewport — shrinks when iOS chrome hides */
+
+/* ── Literal px text-size bumps ──────────────────────────────────────────
+ * Tailwind's text-[9px]/text-[10px] emit fixed px values that @theme
+ * can't override.  These attribute-substring selectors lift them slightly
+ * for better mobile readability without touching layout-critical sizes.
+ *   text-[9px]  → 11px
+ *   text-[10px] → 12px
+ *   text-[11px] → 13px  (already at a comfortable size, just align)
+ * ─────────────────────────────────────────────────────────────────────── */
+[class~="text-[9px]"]  { font-size: 11px !important; }
+[class~="text-[10px]"] { font-size: 12px !important; }
+[class~="text-[11px]"] { font-size: 13px !important; }
+
+/* ── Dual-range power slider ──────────────────────────────────────────────
+ * Two <input type="range"> stacked in a position:relative container.
+ * Tracks are transparent; a custom gradient div sits behind them as the fill.
+ * Thumbs are styled per-input: purple for min handle, pink for max handle.
+ * ─────────────────────────────────────────────────────────────────────── */
+input[type="range"].appearance-none {
+  -webkit-appearance: none;
+  appearance: none;
+}
+/* Shared thumb base */
+input[type="range"].appearance-none::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid #0a0a0a;
+  box-shadow: 0 0 6px rgba(0,0,0,0.6);
+  background: #ff007f;   /* pink = max power handle default */
+}
+input[type="range"].appearance-none:first-of-type::-webkit-slider-thumb {
+  background: #7000ff;   /* purple = min power handle */
+  box-shadow: 0 0 8px rgba(112,0,255,0.5);
+}
+/* Transparent track so custom gradient div shows through */
+input[type="range"].appearance-none::-webkit-slider-runnable-track {
+  background: transparent;
+  height: 4px;
+}
+input[type="range"].appearance-none::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid #0a0a0a;
+  background: #ff007f;
+}
+input[type="range"].appearance-none:first-of-type::-moz-range-thumb {
+  background: #7000ff;
+}
+input[type="range"].appearance-none::-moz-range-track {
+  background: transparent;
+  height: 4px;
+}
