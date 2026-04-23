@@ -30,10 +30,10 @@ ModuleRegistry.register({
 });
 
 ModuleRegistry.register({ id: 'studio',           title: 'Design Studio',     icon: '🎨', component: StudioModule,          isCore: true });
-ModuleRegistry.register({ id: 'machine_settings',  title: 'Machine Config',    icon: '⚙️', component: MachineSettingsModule,  isCore: true });
-ModuleRegistry.register({ id: 'app_settings',      title: 'NeonBeam Settings', icon: '🎛️', component: AppSettingsModule,      isCore: true });
+ModuleRegistry.register({ id: 'gcode_studio',      title: 'Macro Studio',      icon: '📝', component: GCodeStudioModule,      isCore: true });
 ModuleRegistry.register({ id: 'material_presets',  title: 'Material Profiles', icon: '🔥', component: MaterialPresetsModule,  isCore: true });
-ModuleRegistry.register({ id: 'gcode_studio',      title: 'GCode Studio',      icon: '📝', component: GCodeStudioModule,      isCore: true });
+ModuleRegistry.register({ id: 'machine_settings',  title: 'Machine Config',    icon: '⚙️', component: MachineSettingsModule,  isCore: true });
+ModuleRegistry.register({ id: 'app_settings',      title: 'App Settings',      icon: '🎛️', component: AppSettingsModule,      isCore: true });
 
 // ── App ───────────────────────────────────────────────────────────────────────
 

@@ -152,7 +152,7 @@ export const AppSettingsModule: React.FC = () => {
 
     return (
         <div className="p-4 animate-in fade-in zoom-in duration-300 pb-12">
-            <h2 className="text-2xl font-bold text-miami-purple mb-6 tracking-tight">NeonBeam Settings</h2>
+            <h2 className="text-2xl font-bold text-miami-purple mb-6 tracking-tight">App Settings</h2>
 
             <div className="space-y-4">
 
