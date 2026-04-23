@@ -8,6 +8,7 @@ import { StudioModule } from './views/StudioModule';
 import { MachineSettingsModule } from './views/MachineSettingsModule';
 import { AppSettingsModule } from './views/AppSettingsModule';
 import { MaterialPresetsModule } from './views/MaterialPresetsModule';
+import { GCodeStudioModule } from './views/GCodeStudioModule';
 
 // ── Core Module Registration ──────────────────────────────────────────────────
 ModuleRegistry.register({
@@ -32,6 +33,7 @@ ModuleRegistry.register({ id: 'studio',           title: 'Design Studio',     ic
 ModuleRegistry.register({ id: 'machine_settings',  title: 'Machine Config',    icon: '⚙️', component: MachineSettingsModule,  isCore: true });
 ModuleRegistry.register({ id: 'app_settings',      title: 'NeonBeam Settings', icon: '🎛️', component: AppSettingsModule,      isCore: true });
 ModuleRegistry.register({ id: 'material_presets',  title: 'Material Profiles', icon: '🔥', component: MaterialPresetsModule,  isCore: true });
+ModuleRegistry.register({ id: 'gcode_studio',      title: 'GCode Studio',      icon: '📝', component: GCodeStudioModule,      isCore: true });
 
 // ── App ───────────────────────────────────────────────────────────────────────
 

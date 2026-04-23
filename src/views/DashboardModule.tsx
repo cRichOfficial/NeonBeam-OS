@@ -3,6 +3,8 @@ import axios from 'axios';
 import { useTelemetryStore } from '../store/telemetryStore';
 import { useAppSettingsStore } from '../store/appSettingsStore';
 import { useJobStore } from '../store/jobStore';
+import { useMacroStore } from '../store/macroStore';
+import type { GCodeMacro } from '../store/macroStore';
 
 // COMM_API is read from the persisted settings store so users can change it
 // at runtime via NeonBeam Settings → Network Bridge without a code restart.
@@ -101,8 +103,15 @@ export const DashboardModule: React.FC = () => {
     const zAxisEnabled = useAppSettingsStore(s => s.settings.zAxisEnabled);
     const coreApiUrl   = useAppSettingsStore(s => s.settings.coreApiUrl);
     const maxSpindleS  = useAppSettingsStore(s => s.settings.maxSpindleS) || 1000;
+    const homingOffsetX = useAppSettingsStore(s => s.settings.homingOffsetX);
+    const homingOffsetY = useAppSettingsStore(s => s.settings.homingOffsetY);
     const jobStatus    = useJobStore(s => s.jobStatus);
     const setJobStatus = useJobStore(s => s.setJobStatus);
+
+    const macros = useMacroStore(s => s.macros);
+    const layout = useMacroStore(s => s.layout);
+    const toggleStates = useMacroStore(s => s.toggleStates);
+    const flipToggle = useMacroStore(s => s.flipToggle);
 
     // Keep module-level var in sync so helper functions outside the component pick up changes
     _commApi = coreApiUrl;
@@ -111,6 +120,7 @@ export const DashboardModule: React.FC = () => {
     const [liveJogEnabled, setLiveJogEnabled] = useState(false);
     const [liveJogLoading, setLiveJogLoading] = useState(false);
     const [jogError,       setJogError]       = useState<string | null>(null);
+    const [showOverflow,   setShowOverflow]   = useState(false);
 
     // ── On mount: sync live-jog toggle and recover any in-progress job ──────
     useEffect(() => {
@@ -182,6 +192,50 @@ export const DashboardModule: React.FC = () => {
             setTimeout(() => setJogError(null), 3000);
         }
     }, [canJog, jogStep]);
+
+    // Homing action helper
+    const doHome = useCallback((type: 'All' | 'X' | 'Y') => {
+        let cmd = type === 'All' ? '$HX\n$HY' : `$H${type}`;
+        
+        let g92Args = [];
+        if (type === 'All' || type === 'X') {
+            g92Args.push(`X${homingOffsetX}`);
+        }
+        if (type === 'All' || type === 'Y') {
+            g92Args.push(`Y${homingOffsetY}`);
+        }
+        
+        if (g92Args.length > 0) {
+            cmd += `\nG92 ${g92Args.join(' ')}`;
+        }
+        
+        sendCommand(cmd);
+    }, [homingOffsetX, homingOffsetY]);
+
+    const executeMacro = useCallback((m: GCodeMacro) => {
+        if (isOffline) return;
+        if (m.isBuiltIn) {
+            if (m.id === 'builtin_h_all') doHome('All');
+            else if (m.id === 'builtin_h_x') doHome('X');
+            else if (m.id === 'builtin_h_y') doHome('Y');
+            else if (m.id === 'builtin_set_x') { if (!isAlarm) sendCommand('G10 L20 P1 X0'); }
+            else if (m.id === 'builtin_set_y') { if (!isAlarm) sendCommand('G10 L20 P1 Y0'); }
+            else if (m.id === 'builtin_set_origin') { if (!isAlarm) sendCommand('G10 L20 P1 X0 Y0'); }
+        } else {
+            if (m.isToggle) {
+                const isCurrentlyOn = toggleStates[m.id] || false;
+                if (isCurrentlyOn) {
+                    if (m.gcodeOff) sendCommand(m.gcodeOff);
+                    flipToggle(m.id, false);
+                } else {
+                    sendCommand(m.gcode);
+                    flipToggle(m.id, true);
+                }
+            } else {
+                sendCommand(m.gcode);
+            }
+        }
+    }, [doHome, isAlarm, isOffline, toggleStates, flipToggle]);
 
     // Machine actions
     const feedHold  = () => sendCommand('!');
@@ -387,66 +441,142 @@ export const DashboardModule: React.FC = () => {
                     )}
                 </div>
 
-                {/* ── Homing buttons ───────────────────────────────── */}
-                <div className="flex-shrink-0 flex gap-2">
-                    <button onClick={() => sendCommand('$H')}
-                        className="flex-1 py-2.5 bg-gradient-to-b from-miami-cyan/80 to-blue-500/70 text-black font-black text-[10px] uppercase tracking-wide rounded-xl hover:shadow-[0_0_14px_rgba(0,240,255,0.45)] active:scale-95 transition-all">
-                        $H All
-                    </button>
-                    <button onClick={() => sendCommand('$HX')}
-                        className="flex-1 py-2.5 bg-black/60 border border-gray-700 text-gray-400 font-bold text-[10px] uppercase rounded-xl hover:border-miami-cyan/50 hover:text-miami-cyan active:scale-95 transition-all">
-                        $HX
-                    </button>
-                    <button onClick={() => sendCommand('$HY')}
-                        className="flex-1 py-2.5 bg-black/60 border border-gray-700 text-gray-400 font-bold text-[10px] uppercase rounded-xl hover:border-miami-cyan/50 hover:text-miami-cyan active:scale-95 transition-all">
-                        $HY
-                    </button>
-                </div>
+                {/* ── Macro Grid (replaces Homing/Work Origin) ────────────── */}
+                <div className="flex-shrink-0 grid grid-cols-3 gap-2 relative">
+                    {(() => {
+                        const getColorClasses = (color = 'cyan', isToggleOn = false) => {
+                            if (isToggleOn) {
+                                switch (color) {
+                                    case 'pink': return 'bg-miami-pink border-none text-black shadow-[0_0_12px_rgba(255,42,133,0.4)]';
+                                    case 'purple': return 'bg-miami-purple border-none text-black shadow-[0_0_12px_rgba(157,78,221,0.4)]';
+                                    case 'green': return 'bg-green-400 border-none text-black shadow-[0_0_12px_rgba(74,222,128,0.4)]';
+                                    case 'yellow': return 'bg-yellow-400 border-none text-black shadow-[0_0_12px_rgba(250,204,21,0.4)]';
+                                    case 'gray': return 'bg-gray-400 border-none text-black shadow-[0_0_12px_rgba(156,163,175,0.4)]';
+                                    case 'cyan':
+                                    default: return 'bg-miami-cyan border-none text-black shadow-[0_0_12px_rgba(0,240,255,0.4)]';
+                                }
+                            } else {
+                                switch (color) {
+                                    case 'pink': return 'bg-miami-pink/10 border-miami-pink/40 text-miami-pink hover:bg-miami-pink/20 hover:border-miami-pink/60';
+                                    case 'purple': return 'bg-miami-purple/20 border-miami-purple/40 text-miami-purple hover:bg-miami-purple/30 hover:border-miami-purple/70';
+                                    case 'green': return 'bg-green-400/10 border-green-400/40 text-green-400 hover:bg-green-400/20 hover:border-green-400/60';
+                                    case 'yellow': return 'bg-yellow-400/10 border-yellow-400/40 text-yellow-400 hover:bg-yellow-400/20 hover:border-yellow-400/60';
+                                    case 'gray': return 'bg-gray-400/10 border-gray-400/40 text-gray-400 hover:bg-gray-400/20 hover:border-gray-400/60';
+                                    case 'cyan':
+                                    default: return 'bg-miami-cyan/10 border-miami-cyan/40 text-miami-cyan hover:bg-miami-cyan/20 hover:border-miami-cyan/60';
+                                }
+                            }
+                        };
 
-                {/* ── Set Work Origin buttons ──────────────────────── */}
-                {/* G10 L20 P1 sets current machine pos as the new WCS origin — grblHAL native, persistent across resets */}
-                <div className="flex-shrink-0 flex gap-2">
-                    <button
-                        onClick={() => !isAlarm && !isOffline && sendCommand('G10 L20 P1 X0')}
-                        disabled={isAlarm || isOffline}
-                        title="Set current X position as X=0 in work coordinate system"
-                        className={`flex-1 py-2.5 text-[10px] font-black uppercase rounded-xl border transition-all active:scale-95 ${
-                            isAlarm || isOffline
-                                ? 'bg-black/20 border-gray-800 text-gray-700 cursor-not-allowed'
-                                : 'bg-miami-pink/10 border-miami-pink/30 text-miami-pink hover:bg-miami-pink/20 hover:border-miami-pink/60'
-                        }`}
-                    >
-                        Set X=0
-                    </button>
-                    <button
-                        onClick={() => !isAlarm && !isOffline && sendCommand('G10 L20 P1 Y0')}
-                        disabled={isAlarm || isOffline}
-                        title="Set current Y position as Y=0 in work coordinate system"
-                        className={`flex-1 py-2.5 text-[10px] font-black uppercase rounded-xl border transition-all active:scale-95 ${
-                            isAlarm || isOffline
-                                ? 'bg-black/20 border-gray-800 text-gray-700 cursor-not-allowed'
-                                : 'bg-miami-pink/10 border-miami-pink/30 text-miami-pink hover:bg-miami-pink/20 hover:border-miami-pink/60'
-                        }`}
-                    >
-                        Set Y=0
-                    </button>
-                    <button
-                        onClick={() => !isAlarm && !isOffline && sendCommand('G10 L20 P1 X0 Y0')}
-                        disabled={isAlarm || isOffline}
-                        title="Set current position as X=0, Y=0 (work origin)"
-                        className={`flex-1 py-2.5 text-[10px] font-black uppercase rounded-xl border transition-all active:scale-95 ${
-                            isAlarm || isOffline
-                                ? 'bg-black/20 border-gray-800 text-gray-700 cursor-not-allowed'
-                                : 'bg-miami-purple/20 border-miami-purple/40 text-miami-purple hover:bg-miami-purple/30 hover:border-miami-purple/70'
-                        }`}
-                    >
-                        Set Origin
-                    </button>
-                </div>
-            </div>
+                        return (
+                            <>
+                                {layout.slice(0, 11).map((macroId, idx) => {
+                                    const m = macroId ? macros.find(x => x.id === macroId) : null;
+                        const disabled = !m || isOffline || (m.isBuiltIn && m.id.startsWith('builtin_set_') && isAlarm);
+                        const isToggleOn = m ? (toggleStates[m.id] ?? false) : false;
+                        
+                        return (
+                            <button
+                                key={idx}
+                                onClick={() => m && executeMacro(m)}
+                                disabled={disabled}
+                                title={m && !m.isBuiltIn ? m.gcode : undefined}
+                                className={`py-2.5 text-[10px] font-black uppercase tracking-wide rounded-xl border transition-all active:scale-95 flex flex-col items-center justify-center text-center px-1 overflow-hidden
+                                        ${!m ? 'bg-black/20 border-gray-800/50 cursor-default' : 
+                                      disabled ? 'bg-black/20 border-gray-800 text-gray-700 cursor-not-allowed' :
+                                      m.isBuiltIn ? 'bg-gradient-to-b from-miami-cyan/80 to-blue-500/70 text-black border-transparent hover:shadow-[0_0_14px_rgba(0,240,255,0.45)]' :
+                                      getColorClasses(m.color, isToggleOn)
+                                    }`}
+                            >
+                                <span className="truncate w-full">{m ? m.label : ''}</span>
+                                {m?.isToggle && (
+                                    <span className={`text-[7px] leading-tight block w-full mt-0.5 ${isToggleOn ? 'text-black font-black' : 'text-gray-500'}`}>
+                                        {isToggleOn ? '• ON' : '○ OFF'}
+                                    </span>
+                                )}
+                            </button>
+                        );
+                    })}
 
-            {/* ── Row 4: Machine action bar ─────────────────────────────────── */}
-            <div className="flex-shrink-0 flex gap-2">
+                    {/* 12th slot: overflow dropdown or last macro */}
+                    {(() => {
+                        const unassignedMacros = macros.filter(m => !layout.includes(m.id));
+                        const slot11Macro = layout[11] ? macros.find(x => x.id === layout[11]) : null;
+                        
+                        if (unassignedMacros.length > 0) {
+                            return (
+                                <div className="relative">
+                                    <button 
+                                        onClick={() => setShowOverflow(!showOverflow)}
+                                        className="w-full h-full py-2.5 text-[10px] bg-black/60 font-black uppercase tracking-wide rounded-xl border border-gray-700 text-gray-300 hover:border-miami-cyan/50 transition-all flex items-center justify-center"
+                                    >
+                                        More ({unassignedMacros.length}) ▾
+                                    </button>
+                                    
+                                    {showOverflow && (
+                                        <>
+                                            <div className="fixed inset-0 z-40" onClick={() => setShowOverflow(false)} />
+                                            <div className="absolute bottom-full right-0 mb-2 w-48 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                                                <div className="max-h-48 overflow-y-auto">
+                                                    {unassignedMacros.map(um => (
+                                                        <button
+                                                            key={um.id}
+                                                            onClick={() => { executeMacro(um); setShowOverflow(false); }}
+                                                            disabled={isOffline || (um.isBuiltIn && um.id.startsWith('builtin_set_') && isAlarm)}
+                                                            className="w-full text-left px-3 py-2.5 text-[10px] font-bold text-gray-300 border-b border-gray-800 last:border-b-0 hover:bg-white/5 hover:text-white disabled:opacity-30 transition-colors"
+                                                        >
+                                                            <span className={um.isBuiltIn ? '' : (() => {
+                                                                switch(um.color) {
+                                                                    case 'pink': return 'text-miami-pink';
+                                                                    case 'purple': return 'text-miami-purple';
+                                                                    case 'green': return 'text-green-400';
+                                                                    case 'yellow': return 'text-yellow-400';
+                                                                    case 'gray': return 'text-gray-400';
+                                                                    default: return 'text-miami-cyan';
+                                                                }
+                                                            })()}>{um.label}</span>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                            );
+                        } else {
+                            const disabled = !slot11Macro || isOffline || (slot11Macro.isBuiltIn && slot11Macro.id.startsWith('builtin_set_') && isAlarm);
+                            const isToggleOn = slot11Macro ? (toggleStates[slot11Macro.id] ?? false) : false;
+                            
+                            return (
+                                <button
+                                    onClick={() => slot11Macro && executeMacro(slot11Macro)}
+                                    disabled={disabled}
+                                    title={slot11Macro && !slot11Macro.isBuiltIn ? slot11Macro.gcode : undefined}
+                                    className={`py-2.5 text-[10px] font-black uppercase tracking-wide rounded-xl border transition-all active:scale-95 flex flex-col items-center justify-center text-center px-1 overflow-hidden
+                                        ${!slot11Macro ? 'bg-black/20 border-gray-800/50 cursor-default' : 
+                                          disabled ? 'bg-black/20 border-gray-800 text-gray-700 cursor-not-allowed' :
+                                          slot11Macro.isBuiltIn ? 'bg-gradient-to-b from-miami-cyan/80 to-blue-500/70 text-black border-transparent hover:shadow-[0_0_14px_rgba(0,240,255,0.45)]' :
+                                          getColorClasses(slot11Macro.color, isToggleOn)
+                                        }`}
+                                >
+                                    <span className="truncate w-full">{slot11Macro ? slot11Macro.label : ''}</span>
+                                    {slot11Macro?.isToggle && (
+                                        <span className={`text-[7px] leading-tight block w-full mt-0.5 ${isToggleOn ? 'text-black font-black' : 'text-gray-500'}`}>
+                                            {isToggleOn ? '• ON' : '○ OFF'}
+                                        </span>
+                                    )}
+                                </button>
+                            );
+                        }
+                    })()}
+                    </>
+                );
+            })()}
+        </div>
+    </div>
+
+    {/* ── Row 4: Machine action bar ─────────────────────────────────── */}
+    <div className="flex-shrink-0 flex gap-2">
                 <button onClick={feedHold}
                     className="flex-1 py-4 bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 font-black text-xs uppercase tracking-wide rounded-xl hover:bg-yellow-500/20 hover:border-yellow-400 active:scale-95 transition-all">
                     ⏸ Hold

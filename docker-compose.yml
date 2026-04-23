@@ -1,0 +1,95 @@
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║  NeonBeam OS — Standalone Docker Compose                                   ║
+# ║                                                                              ║
+# ║  Runs the NeonBeam OS PWA in development mode (Vite hot-reload).            ║
+# ║  For production (nginx static build) see the Production section below.      ║
+# ║                                                                              ║
+# ║  The mDNS Sidecar is NOT included here — it must run natively on the host  ║
+# ║  OS alongside this container.  See ../discovery_sidecar/README.md.         ║
+# ║                                                                              ║
+# ║  Usage                                                                       ║
+# ║  ─────────────────────────────────────────────────────────────────────────  ║
+# ║    # Development (Vite dev server, hot-reload):                              ║
+# ║    docker compose up --build                                                 ║
+# ║                                                                              ║
+# ║    # Production (nginx static build):                                        ║
+# ║    docker compose -f docker-compose.prod.yml up -d --build                  ║
+# ║    # (see docker-compose.prod.yml — built separately so backend URLs can    ║
+# ║    #  be baked into the bundle via VITE_* build args)                        ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+services:
+  neonbeam-os:
+    build:
+      context: .
+      dockerfile: Dockerfile     # Dev image: node:20-slim + Vite dev server
+      # Production image — uncomment to build the nginx static bundle instead:
+      # dockerfile: Dockerfile.prod
+      # args:
+      #   VITE_COMM_API_URL:   http://neonbeam-core.local:8000
+      #   VITE_VISION_API_URL: http://neonbeam-lens.local:8001
+
+    # ── Port exposure ─────────────────────────────────────────────────────────
+    # Dev server (Vite):     port 3000
+    # Production (nginx):    change to "80:80" when using Dockerfile.prod
+    ports:
+      - "3000:3000"
+
+    # ── Environment variables ─────────────────────────────────────────────────
+    # Copy .env.example → .env and adjust values before first run.
+    # Values in the 'environment' block below OVERRIDE anything in .env.
+    env_file:
+      - .env # created from .env.example — not committed to git
+
+    environment:
+
+      # ── Backend API URLs ────────────────────────────────────────────────────
+      #
+      # Development (everything on one host):
+      #   Both services are reachable at localhost from the host browser.
+      #   From inside the Docker container, 'localhost' = container loopback,
+      #   so the browser (running on the HOST) addresses these directly.
+      #   Keep these pointing at the host LAN IP if browsing from a mobile device.
+      #
+      # Production:
+      #   These are BAKED INTO the JS bundle at Vite build time — they cannot be
+      #   changed after the image is built.  Pass them as build args in
+      #   Dockerfile.prod (see the commented 'args:' block above).
+      VITE_COMM_API_URL: http://localhost:8000       # NeonBeam Core REST/WS API
+      VITE_VISION_API_URL: http://localhost:8001     # NeonBeam Lens REST API
+
+      # ── Accessing from a mobile device on the same LAN ─────────────────────
+      # If loading the app from a phone, 'localhost' won't resolve to your dev
+      # machine.  Replace with your machine's actual LAN IP, e.g.:
+      # VITE_COMM_API_URL: http://192.168.1.50:8000
+      # VITE_VISION_API_URL: http://192.168.1.50:8001
+
+      # ── mDNS Sidecar bridge ─────────────────────────────────────────────────
+      #
+      # The sidecar runs NATIVELY (not in Docker) so Zeroconf can access the
+      # real host network stack.  From inside this container, 'localhost' is
+      # the container loopback — use host.docker.internal instead, which Docker
+      # resolves to the host machine's actual IP.
+      #
+      # Docker Desktop (Windows / macOS):  host.docker.internal is automatic.
+      # Linux Docker Engine:               the extra_hosts entry below injects it.
+      DISCOVERY_SIDECAR_URL: http://host.docker.internal:3001
+
+    # ── Hot-reload volume (development only) ──────────────────────────────────
+    # Mounts the source tree into the container so Vite picks up file changes
+    # without rebuilding the image.  node_modules is excluded via the anonymous
+    # volume — it is managed inside the container and must not be overwritten
+    # by the host's (possibly different platform) node_modules directory.
+    volumes:
+      - .:/app              # source tree → container
+      - /app/node_modules   # keep container node_modules intact
+
+    # ── Host bridge ──────────────────────────────────────────────────────────
+    # Resolves host.docker.internal → host machine IP on Linux.
+    # Required for the mDNS sidecar and for socket:// backend connections.
+    # Safe to leave enabled on Docker Desktop (Windows/macOS) — it's a no-op.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    # ── Restart policy ────────────────────────────────────────────────────────
+    restart: unless-stopped

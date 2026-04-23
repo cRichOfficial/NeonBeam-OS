@@ -1,6 +1,6 @@
 import React from 'react';
 
-export type GrblState = 'Idle' | 'Run' | 'Hold' | 'Jog' | 'Alarm' | 'Door' | 'Check' | 'Home' | 'Sleep' | 'Offline';
+export type GrblState = 'Idle' | 'Run' | 'Hold' | 'Jog' | 'Alarm' | 'Door' | 'Check' | 'Home' | 'Sleep' | 'Offline' | 'Connecting';
 
 export interface MPos {
     x: number;

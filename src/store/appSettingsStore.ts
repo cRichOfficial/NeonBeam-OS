@@ -10,6 +10,8 @@ export interface AppSettings {
     probeOffsetY: number;
     zAxisEnabled: boolean;
     zProbeOffset: number;
+    homingOffsetX: number;
+    homingOffsetY: number;
 
     // Display / UX Overrides
     gridWidth: number;
@@ -41,6 +43,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     probeOffsetY: 0,
     zProbeOffset: -1.5,
     zAxisEnabled: false,
+    homingOffsetX: 0,
+    homingOffsetY: 0,
 
     gridWidth: 400,
     gridHeight: 400,

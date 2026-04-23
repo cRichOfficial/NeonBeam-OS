@@ -11,6 +11,7 @@ export type { SvgPathInfo, JobOperation, LayerOp };
 
 const DEFAULT_PARAMS: OpParams = {
     power:        850,
+    minPower:     0,
     rate:         1500,    // mm/min
     passes:       1,
     airAssist:    false,

@@ -173,6 +173,14 @@ export const MachineSettingsModule: React.FC = () => {
                                 <label className="block text-[10px] uppercase text-gray-300 mb-1">Camera/Probe Offset Y</label>
                                 <input type="number" value={settings.probeOffsetY} onChange={e => updateSettings({ probeOffsetY: Number(e.target.value) })} className="w-full bg-black/60 border border-gray-700 focus:border-gray-400 rounded-lg p-2 text-white font-mono outline-none transition-colors" />
                             </div>
+                            <div>
+                                <label className="block text-[10px] uppercase text-gray-300 mb-1">Homing Offset X (G92)</label>
+                                <input type="number" value={settings.homingOffsetX} onChange={e => updateSettings({ homingOffsetX: Number(e.target.value) })} className="w-full bg-black/60 border border-gray-700 focus:border-gray-400 rounded-lg p-2 text-white font-mono outline-none transition-colors" />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] uppercase text-gray-300 mb-1">Homing Offset Y (G92)</label>
+                                <input type="number" value={settings.homingOffsetY} onChange={e => updateSettings({ homingOffsetY: Number(e.target.value) })} className="w-full bg-black/60 border border-gray-700 focus:border-gray-400 rounded-lg p-2 text-white font-mono outline-none transition-colors" />
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -219,7 +227,7 @@ export const MachineSettingsModule: React.FC = () => {
                             {Object.entries(fwSettings)
                                 .filter(([key]) => showAdvanced || parseInt(key.slice(1)) <= 132)
                                 .sort(([a], [b]) => parseInt(a.slice(1)) - parseInt(b.slice(1)))
-                                .map(([key, val], idx) => {
+                                .map(([key], idx) => {
                                     const isDirty = key in dirty;
                                     return (
                                         <div
