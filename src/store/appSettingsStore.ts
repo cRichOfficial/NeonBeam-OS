@@ -56,10 +56,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
     bitmapDpi: 96,
     maxSpindleS: 1000,      // matches grblHAL $30 default — change if your firmware differs
 
-    // Fall back to .env vars so existing deployments keep working without
-    // the user ever opening the settings page.
-    coreApiUrl: import.meta.env.VITE_COMM_API_URL   ?? 'http://localhost:8000',
-    lensApiUrl: import.meta.env.VITE_VISION_API_URL ?? 'http://localhost:8001',
+    // Leave backend URLs blank by default. The system operates gracefully in a
+    // disconnected state until the user configures the endpoints manually or
+    // adopts them via the mDNS discovery sidecar bridging layer.
+    coreApiUrl: '',
+    lensApiUrl: '',
 };
 
 export const useAppSettingsStore = create<AppSettingsStore>()(

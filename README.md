@@ -20,18 +20,10 @@ NeonBeam OS is the browser-based PWA that provides the full operator interface f
 
 ---
 
-## Environment Variables
+## Environment Discovery
 
-Copy `.env.example` from the repo root and adjust to match your deployment.
-
-| Variable | Purpose | Example |
-|---|---|---|
-| `VITE_COMM_API_URL` | NeonBeam Core base URL | `http://192.168.1.10:8000` |
-| `VITE_VISION_API_URL` | NeonBeam Lens base URL | `http://192.168.1.11:8001` |
-| `DISCOVERY_SIDECAR_URL` | mDNS Sidecar (set by Docker/Vite proxy) | `http://host.docker.internal:3001` |
-
-> In production builds these values are **baked into the JS bundle at build time** by Vite.  
-> You must pass them as build args — see Production section below.
+NeonBeam OS runs purely client-side. Rather than baking API URLs into the container at compile-time (which hurts portability across mobile devices), NeonBeam OS dynamically connects to its backend peers. 
+If running locally, it defaults to the host machine serving the UI (`window.location.hostname`). If operating across complex subnets, you can manually bridge connections inside the **NeonBeam Settings** UI at runtime.
 
 ---
 
@@ -76,12 +68,13 @@ Hot-reload is active — changes to `src/` update instantly in the browser.
 
 ### Accessing from a Mobile Device on the Same LAN
 
-Vite binds to `0.0.0.0` by default in Docker. When loading from a phone:
+Vite binds to `0.0.0.0` by default in Docker.
+When loading from a phone, simply open your laptop's LAN IP configuration:
 
 1. Find your laptop's LAN IP (e.g. `192.168.1.50`).
-2. In `.env`, set `VITE_COMM_API_URL=http://192.168.1.50:8000`.
-3. Restart the frontend container / dev server.
-4. Open `http://192.168.1.50:3000` on your phone.
+2. Open `http://192.168.1.50:3000` on your phone.
+
+The application computes backend requests relative to its `window.location.hostname` (in this case `192.168.1.50`), gracefully allowing true mobile connectivity over WiFi without statically binding `.env` variables.
 
 ---
 
@@ -99,8 +92,6 @@ The production build compiles the React app via Vite and serves it through an ng
 
 ```bash
 # 1. Build and start (from repo root)
-VITE_COMM_API_URL=http://neonbeam-core.local:8000 \
-VITE_VISION_API_URL=http://neonbeam-lens.local:8001 \
 docker compose -f docker-compose.prod.yml up -d --build
 
 # 2. The app is served on http://<host-ip>:80

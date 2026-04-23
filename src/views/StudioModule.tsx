@@ -9,7 +9,7 @@ import { parseSvgPaths, generateMultiOpGCode } from '../studio/svgLayerEngine';
 import { useJobOperationsStore } from '../store/jobOperationsStore';
 import type { LayerOp } from '../store/jobOperationsStore';
 
-const _COMM_API_FALLBACK = import.meta.env.VITE_COMM_API_URL ?? 'http://localhost:8000';
+const _COMM_API_FALLBACK = '';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 type FileKind     = 'svg' | 'bitmap';

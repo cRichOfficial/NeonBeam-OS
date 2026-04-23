@@ -43,12 +43,41 @@ function App() {
     // We must NOT hardcode ws://localhost here — from a phone on Wi-Fi, localhost
     // is the phone's own loopback and the connection will never succeed.
     const coreApiUrl = useAppSettingsStore(s => s.settings.coreApiUrl);
-    const wsUrl = React.useMemo(() => {
-        const base = coreApiUrl
-            || import.meta.env.VITE_COMM_API_URL
-            || 'http://localhost:8000';
-        // Replace http(s):// with ws(s):// so the URL is always a valid WS address.
-        return base.replace(/^http(s?):\/\//, 'ws$1://') + '/ws/telemetry';
+    const [wsUrl, setWsUrl] = React.useState<string>('');
+
+    React.useEffect(() => {
+        const base = coreApiUrl;
+        
+        let active = true;
+        
+        const testAndConnect = async () => {
+            try {
+                // Test connectivity of the service before attempting to connect the WS
+                const res = await fetch(`${base}/api/health`, {
+                    signal: AbortSignal.timeout(3000),
+                });
+                
+                if (res.ok && active) {
+                    // Test successful! Assign the wsUrl to trigger the WebSocket connection.
+                    setWsUrl(base.replace(/^http(s?):\/\//, 'ws$1://') + '/ws/telemetry');
+                } else if (active) {
+                    console.warn('[NeonBeam] Health check failed or returned non-200. Will not auto-connect WS.');
+                    setWsUrl('');
+                }
+            } catch (err) {
+                if (active) {
+                    console.warn('[NeonBeam] Health check unreachable. Will not auto-connect WS.');
+                    setWsUrl('');
+                }
+            }
+        };
+
+        // If coreApiUrl is defined (or fallback exists), run the test
+        if (base) {
+            testAndConnect();
+        }
+
+        return () => { active = false; };
     }, [coreApiUrl]);
 
     useTelemetry(wsUrl);

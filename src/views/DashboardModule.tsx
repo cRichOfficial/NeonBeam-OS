@@ -10,7 +10,7 @@ import type { GCodeMacro } from '../store/macroStore';
 // at runtime via NeonBeam Settings → Network Bridge without a code restart.
 // The constant below is kept only for helper functions defined outside the
 // component; the component body re-reads from the store on every render.
-let _commApi = import.meta.env.VITE_COMM_API_URL || 'http://localhost:8000';
+let _commApi = '';
 
 const JOG_FEED_BY_STEP: Record<number, number> = {
     0.01: 60, 0.1: 300, 1: 1500, 10: 3000, 100: 6000,
