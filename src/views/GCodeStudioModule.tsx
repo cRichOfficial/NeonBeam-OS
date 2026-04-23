@@ -106,7 +106,7 @@ export const GCodeStudioModule: React.FC = () => {
     return (
         <div className="p-4 pb-20 animate-in fade-in zoom-in duration-300">
             <div className="flex items-center justify-between mb-5">
-                <h2 className="text-2xl font-bold text-miami-cyan tracking-tight">GCode Studio</h2>
+                <h2 className="text-2xl font-bold text-miami-cyan tracking-tight">Macro Studio</h2>
                 {!isCreating && (
                     <button
                         onClick={() => setIsCreating(true)}
@@ -219,7 +219,7 @@ export const GCodeStudioModule: React.FC = () => {
             {/* ── Dashboard Layout Grid ──────────────────────────────── */}
             <div className="bg-black/40 border border-gray-800 rounded-xl p-4 shadow-lg mb-6">
                 <h3 className="text-xs font-bold uppercase tracking-widest text-gray-300 mb-2">Dashboard Macro Grid</h3>
-                <p className="text-[10px] text-gray-500 mb-4 font-mono">Tap any slot below to assign or reposition a macro. If you have more than 15 total macros, unassigned ones will automatically appear in a dropdown in the 15th slot on the Dashboard.</p>
+                <p className="text-[10px] text-gray-500 mb-4 font-mono">Tap any slot below to assign or reposition a macro. If you have more than 12 total macros, unassigned ones will automatically appear in a dropdown in the 12th slot on the Dashboard.</p>
 
                 <div className="grid grid-cols-3 gap-2">
                     {layout.map((macroId, idx) => {
