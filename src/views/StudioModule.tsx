@@ -169,8 +169,6 @@ export const StudioModule: React.FC = () => {
     const toMmPerMin     = (val: number)      => isMmPerSec ? Math.round(val * 60)        : val;
     const displayRate     = toDisplay(opRate);
     const setDisplayRate  = (val: number)     => setOpRate(toMmPerMin(val));
-    const displayRateMax  = isMmPerSec ? 167   : 10000;  // 10000 mm/min ≈ 167 mm/s
-    const displayRateStep = isMmPerSec ? 0.5   : 50;
     const displayRateUnit = isMmPerSec ? 'mm/s' : 'mm/min';
 
 
@@ -180,6 +178,15 @@ export const StudioModule: React.FC = () => {
     const [gcodeView,   setGcodeView]   = useState<GCodeView>('preview');
     const [gcodoMoves,  setGCodeMoves]  = useState<PreviewMove[]>([]);
     const [isGenerating,setIsGenerating]= useState(false);
+
+    // ── Viewport State (Zoom & Pan) ──
+    const [viewZoom,    setViewZoom]    = useState(1);
+    const [viewOffsetX, setViewOffsetX] = useState(0);
+    const [viewOffsetY, setViewOffsetY] = useState(0);
+    const lastPinchDist = useRef<number | null>(null);
+    const pointers      = useRef<Map<number, {x: number, y: number}>>(new Map());
+    const isPanning     = useRef(false);
+    const lastPoint     = useRef<{x: number, y: number} | null>(null);
 
     // Job status — shared store so DashboardModule can read it
     const jobStatus    = useJobStore(s => s.jobStatus);
@@ -193,20 +200,26 @@ export const StudioModule: React.FC = () => {
 
     // ── Refs ──
     const canvasRef    = useRef<HTMLCanvasElement>(null);
+    // Uniform scale: 1 mm maps to the same number of pixels on both axes
+    const baseSc = Math.min(DW / mmW, DH / mmH);
+    const scX    = baseSc * viewZoom;
+    const scY    = baseSc * viewZoom;
+    // Actual pixel dimensions of the plot area (may be larger than DW×DH when zoomed)
+    const plotW  = scX * mmW;
+    const plotH  = scY * mmH;
+
+    const bumpRender = useCallback(() => setRenderTick(t => t + 1), []);
+
+    const resetView = useCallback(() => {
+        setViewZoom(1); setViewOffsetX(0); setViewOffsetY(0);
+        bumpRender();
+    }, [bumpRender]);
+
     const fileInputRef = useRef<HTMLInputElement>(null);
     const designImgRef = useRef<HTMLImageElement | null>(null);
     const srcCanvasRef = useRef<HTMLCanvasElement | null>(null);
     const ditheredRef  = useRef<HTMLCanvasElement | null>(null);
     const svgTextRef   = useRef<string>('');        // raw SVG XML
-
-    // Uniform scale: 1 mm maps to the same number of pixels on both axes
-    const sc   = Math.min(DW / mmW, DH / mmH);
-    const scX  = sc;
-    const scY  = sc;
-    // Actual pixel dimensions of the plot area (may be smaller than DW×DH)
-    const plotW = sc * mmW;   // pixels
-    const plotH = sc * mmH;   // pixels
-    const bumpRender = useCallback(() => setRenderTick(t => t + 1), []);
 
     // ── Physical size helper ──
     // For SVGs: parse viewBox directly from raw XML (DOMParser) so the coordinate
@@ -279,9 +292,16 @@ export const StudioModule: React.FC = () => {
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
 
+        // 1. Background (Fixed)
         ctx.fillStyle = '#080808'; ctx.fillRect(0, 0, CW, CH);
+
+        // 2. Viewport Transform
+        ctx.save();
+        ctx.translate(viewOffsetX, viewOffsetY);
+
+        // Bed background & border
         ctx.fillStyle = '#111111'; ctx.fillRect(ML, 0, plotW, plotH);
-        ctx.strokeStyle = 'rgba(112,0,255,0.18)'; ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgba(112,0,255,0.18)'; ctx.lineWidth = 1 / viewZoom;
         ctx.strokeRect(ML, 0, plotW, plotH);
 
         // Minor grid
@@ -398,21 +418,128 @@ export const StudioModule: React.FC = () => {
             }
         }
 
-        // Axis labels
+        ctx.restore(); // End of viewport transform
+
+        // ── Axis labels (Docked to margins) ──
         ctx.font = 'bold 8px ui-monospace, monospace';
-        ctx.textBaseline = 'bottom'; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(0,200,220,0.55)';
-        for (let x=0;x<=mmW;x+=major) ctx.fillText(`${x}`, ML+x*scX, CH-1);
+        ctx.fillStyle = 'rgba(0,200,220,0.55)';
+
+        // X Labels (Bottom-docked, move horizontally)
+        ctx.textBaseline = 'bottom'; ctx.textAlign = 'center';
+        for (let x = 0; x <= mmW; x += major) {
+            const px = ML + viewOffsetX + x * scX;
+            // Only draw if within the plot area horizontally
+            if (px >= ML - 1 && px <= ML + plotW * viewZoom + 1) { // Wait, plotW is already scX*mmW
+                 // We want to clip them to the CW area for neatness
+                 if (px >= ML && px <= CW) ctx.fillText(`${x}`, px, CH - 1);
+            }
+        }
+
+        // Y Labels (Left-docked, move vertically)
         ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-        for (let y=0;y<=mmH;y+=major) { if(y===0)continue; ctx.fillText(`${y}`, ML-4, plotH-y*scY); }
-        ctx.fillStyle='rgba(100,150,160,0.35)'; ctx.font='7px sans-serif';
-        ctx.textAlign='right'; ctx.textBaseline='top'; ctx.fillText('mm', ML-2, 2);
+        for (let y = 0; y <= mmH; y += major) {
+            if (y === 0) continue;
+            const py = (plotH + viewOffsetY) - y * scY;
+            if (py >= 0 && py <= plotH + viewOffsetY) {
+                 if (py >= 0 && py <= CH - MB) ctx.fillText(`${y}`, ML - 4, py);
+            }
+        }
 
-        // Origin marker
-        ctx.fillStyle='#ff007f'; ctx.beginPath(); ctx.arc(ML,plotH,4,0,Math.PI*2); ctx.fill();
-        ctx.strokeStyle='rgba(255,0,127,0.4)'; ctx.lineWidth=1;
-        ctx.beginPath(); ctx.moveTo(ML,plotH-8); ctx.lineTo(ML,plotH); ctx.moveTo(ML,plotH); ctx.lineTo(ML+8,plotH); ctx.stroke();
+        ctx.fillStyle = 'rgba(100,150,160,0.35)'; ctx.font = '7px sans-serif';
+        ctx.textAlign = 'right'; ctx.textBaseline = 'top'; ctx.fillText('mm', ML - 2, 2);
 
-    }, [renderTick, mmW, mmH, scX, scY, plotW, plotH, major, minor, fileKind, posX, posY, scalePct, operations, dpi, activeTab, gcodoMoves]);
+        // ── Origin marker (Moves with bed) ──
+        ctx.save();
+        ctx.translate(viewOffsetX, viewOffsetY);
+        ctx.fillStyle = '#ff007f'; ctx.beginPath(); ctx.arc(ML, plotH, 4, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(255,0,127,0.4)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(ML, plotH - 8); ctx.lineTo(ML, plotH); ctx.moveTo(ML, plotH); ctx.lineTo(ML + 8, plotH); ctx.stroke();
+        ctx.restore();
+
+    }, [renderTick, mmW, mmH, scX, scY, plotW, plotH, major, minor, fileKind, posX, posY, scalePct, operations, dpi, activeTab, gcodoMoves, viewZoom, viewOffsetX, viewOffsetY]);
+
+
+    // ── Interaction Handlers ──
+    const handleWheel = useCallback((e: React.WheelEvent) => {
+        if (!canvasRef.current) return;
+
+        const delta = e.deltaY > 0 ? 0.9 : 1.1;
+        const newZoom = Math.min(20, Math.max(0.5, viewZoom * delta));
+
+        // Zoom around viewport center
+        const mx = CW / 2;
+        const my = CH / 2;
+
+        const dx = (mx - viewOffsetX - ML) / viewZoom;
+        const dy = (my - viewOffsetY) / viewZoom;
+        
+        const newOffsetX = mx - ML - dx * newZoom;
+        const newOffsetY = my - dy * newZoom;
+
+        setViewZoom(newZoom);
+        setViewOffsetX(newOffsetX);
+        setViewOffsetY(newOffsetY);
+        bumpRender();
+    }, [viewZoom, viewOffsetX, viewOffsetY, bumpRender]);
+
+    const handlePointerDown = useCallback((e: React.PointerEvent) => {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        
+        // Track pointer for multi-touch
+        pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+        isPanning.current = true;
+        lastPoint.current = { x: e.clientX, y: e.clientY };
+        canvasRef.current?.setPointerCapture(e.pointerId);
+    }, []);
+
+    const handlePointerMove = useCallback((e: React.PointerEvent) => {
+        pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+        if (pointers.current.size === 2) {
+            // Pinch-to-zoom
+            const pts = Array.from(pointers.current.values());
+            const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+            
+            if (lastPinchDist.current !== null && lastPinchDist.current > 0) {
+                const delta = dist / lastPinchDist.current;
+                const newZoom = Math.min(20, Math.max(0.5, viewZoom * delta));
+                
+                // Zoom around viewport center
+                const mx = CW / 2;
+                const my = CH / 2;
+
+                const dx = (mx - viewOffsetX - ML) / viewZoom;
+                const dy = (my - viewOffsetY) / viewZoom;
+                
+                setViewZoom(newZoom);
+                setViewOffsetX(mx - ML - dx * newZoom);
+                setViewOffsetY(my - dy * newZoom);
+                bumpRender();
+            }
+            lastPinchDist.current = dist;
+            return;
+        }
+
+        if (isPanning.current && lastPoint.current && pointers.current.size === 1) {
+            const dx = e.clientX - lastPoint.current.x;
+            const dy = e.clientY - lastPoint.current.y;
+            
+            setViewOffsetX(v => v + dx);
+            setViewOffsetY(v => v + dy);
+            lastPoint.current = { x: e.clientX, y: e.clientY };
+            bumpRender();
+        }
+    }, [viewZoom, viewOffsetX, viewOffsetY, bumpRender]);
+
+    const handlePointerUp = useCallback((e: React.PointerEvent) => {
+        pointers.current.delete(e.pointerId);
+        if (pointers.current.size === 0) {
+            isPanning.current = false;
+            lastPoint.current = null;
+        }
+        lastPinchDist.current = null;
+    }, []);
 
 
     // ── File loading ──
@@ -636,9 +763,16 @@ export const StudioModule: React.FC = () => {
             {/* ── Header + Tab Bar ── */}
             <div className="px-4 pt-3 pb-2 flex-shrink-0">
                 <div className="flex items-center justify-between mb-2">
-                    <div>
-                        <h2 className="text-xl font-black text-miami-pink tracking-tight">Design Studio</h2>
-                        <p className="text-[10px] text-gray-500 font-mono mt-0.5">⊕ BL origin · {mmW}×{mmH} mm</p>
+                    <div className="flex items-center gap-3">
+                        <div>
+                            <h2 className="text-xl font-black text-miami-pink tracking-tight">Design Studio</h2>
+                            <p className="text-[10px] text-gray-500 font-mono mt-0.5">⊕ BL origin · {mmW}×{mmH} mm</p>
+                        </div>
+                        {(viewZoom !== 1 || viewOffsetX !== 0 || viewOffsetY !== 0) && (
+                            <button onClick={resetView} className="px-2 py-1 rounded bg-miami-pink/10 border border-miami-pink/30 text-[9px] font-black text-miami-pink hover:bg-miami-pink/20 transition-all uppercase tracking-tighter">
+                                ↺ Reset View
+                            </button>
+                        )}
                     </div>
                     {fileKind && (
                         <button onClick={clearDesign} className="text-[10px] text-gray-600 hover:text-red-400 border border-gray-800 hover:border-red-900 rounded-lg px-2.5 py-1.5 font-bold transition-colors">
@@ -676,7 +810,18 @@ export const StudioModule: React.FC = () => {
                     onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
                     onDragLeave={() => setIsDragOver(false)}
                 >
-                    <canvas ref={canvasRef} width={CW} height={CH} className="w-full block" />
+                    <canvas 
+                        ref={canvasRef} 
+                        width={CW} 
+                        height={CH} 
+                        className="w-full block cursor-crosshair touch-none"
+                        onWheel={handleWheel}
+                        onPointerDown={handlePointerDown}
+                        onPointerMove={handlePointerMove}
+                        onPointerUp={handlePointerUp}
+                        onPointerCancel={handlePointerUp}
+                        onPointerLeave={handlePointerUp}
+                    />
                 </div>
             </div>
 
@@ -1062,7 +1207,7 @@ export const StudioModule: React.FC = () => {
                                     { label: 'X (mm)',  value: posX,     min: undefined, max: mmW, step: 1, set: setPosX },
                                     { label: 'Y (mm)',  value: posY,     min: undefined, max: mmH, step: 1, set: setPosY },
                                     { label: 'Scale %', value: scalePct, min: 1, max: 500, step: 5, set: setScalePct },
-                                ].map(({ label, value, min, max, step, set }) => (
+                                ].map(({ label, value, min, set }) => (
                                     <div key={label}>
                                         <label className="block text-[9px] text-gray-400 mb-1 uppercase font-bold">{label}</label>
                                         <NumericInput value={value}
