@@ -421,16 +421,16 @@ export const StudioModule: React.FC = () => {
         ctx.restore(); // End of viewport transform
 
         // ── Axis labels (Docked to margins) ──
-        ctx.font = 'bold 8px ui-monospace, monospace';
-        ctx.fillStyle = 'rgba(0,200,220,0.55)';
+        const fontSize = Math.max(10, Math.min(20, 10 + (viewZoom - 1) * 3));
+        ctx.font = `bold ${fontSize}px ui-monospace, monospace`;
+        ctx.fillStyle = 'rgba(0,200,220,0.65)';
 
         // X Labels (Bottom-docked, move horizontally)
         ctx.textBaseline = 'bottom'; ctx.textAlign = 'center';
         for (let x = 0; x <= mmW; x += major) {
             const px = ML + viewOffsetX + x * scX;
             // Only draw if within the plot area horizontally
-            if (px >= ML - 1 && px <= ML + plotW * viewZoom + 1) { // Wait, plotW is already scX*mmW
-                 // We want to clip them to the CW area for neatness
+            if (px >= ML - 1 && px <= ML + plotW + 1) { 
                  if (px >= ML && px <= CW) ctx.fillText(`${x}`, px, CH - 1);
             }
         }
@@ -445,7 +445,7 @@ export const StudioModule: React.FC = () => {
             }
         }
 
-        ctx.fillStyle = 'rgba(100,150,160,0.35)'; ctx.font = '7px sans-serif';
+        ctx.fillStyle = 'rgba(100,150,160,0.45)'; ctx.font = 'bold 9px sans-serif';
         ctx.textAlign = 'right'; ctx.textBaseline = 'top'; ctx.fillText('mm', ML - 2, 2);
 
         // ── Origin marker (Moves with bed) ──
