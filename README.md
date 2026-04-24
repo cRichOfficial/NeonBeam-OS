@@ -22,8 +22,9 @@ NeonBeam OS is the browser-based PWA that provides the full operator interface f
 
 ## Environment Discovery
 
-NeonBeam OS runs purely client-side. Rather than baking API URLs into the container at compile-time (which hurts portability across mobile devices), NeonBeam OS dynamically connects to its backend peers. 
-If running locally, it defaults to the host machine serving the UI (`window.location.hostname`). If operating across complex subnets, you can manually bridge connections inside the **NeonBeam Settings** UI at runtime.
+NeonBeam OS runs purely client-side. To ensure maximum portability, backend API URLs are not hardcoded into the business logic. Instead, the application uses **VITE_COMM_API_URL** and **VITE_VISION_API_URL** as the initial default settings.
+
+If these variables are provided at build time (e.g. via Docker Compose or a `.env` file), they populate the **NeonBeam Settings** screen automatically. Users can manually override these settings at runtime, and those changes are persisted to the browser's `localStorage`.
 
 ---
 
@@ -74,7 +75,7 @@ When loading from a phone, simply open your laptop's LAN IP configuration:
 1. Find your laptop's LAN IP (e.g. `192.168.1.50`).
 2. Open `http://192.168.1.50:3000` on your phone.
 
-The application computes backend requests relative to its `window.location.hostname` (in this case `192.168.1.50`), gracefully allowing true mobile connectivity over WiFi without statically binding `.env` variables.
+The application uses the backend URLs configured in your `.env` file (or manually entered in Settings). If you are accessing from a phone, ensure the `VITE_COMM_API_URL` and `VITE_VISION_API_URL` in your `.env` use your laptop's LAN IP instead of `localhost`.
 
 ---
 

@@ -305,7 +305,7 @@ export const AppSettingsModule: React.FC = () => {
                                     value={settings.coreApiUrl}
                                     onChange={e => updateSettings({ coreApiUrl: e.target.value })}
                                     className="flex-1 bg-black/60 border border-gray-700 focus:border-miami-cyan rounded-lg p-2 text-white font-mono text-xs outline-none transition-colors"
-                                    placeholder="http://neonbeam-core.local:8000"
+                                    placeholder={import.meta.env.VITE_COMM_API_URL || "http://neonbeam-core.local:8000"}
                                 />
                                 <button
                                     id="test-core-btn"
@@ -330,7 +330,7 @@ export const AppSettingsModule: React.FC = () => {
                                     value={settings.lensApiUrl}
                                     onChange={e => updateSettings({ lensApiUrl: e.target.value })}
                                     className="flex-1 bg-black/60 border border-gray-700 focus:border-miami-purple rounded-lg p-2 text-white font-mono text-xs outline-none transition-colors"
-                                    placeholder="http://neonbeam-lens.local:8001"
+                                    placeholder={import.meta.env.VITE_VISION_API_URL || "http://neonbeam-lens.local:8001"}
                                 />
                                 <button
                                     id="test-lens-btn"
