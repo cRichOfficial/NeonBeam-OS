@@ -494,29 +494,40 @@ export const StudioModule: React.FC = () => {
         if (!fileKind || !designImgRef.current) return;
         setIsGenerating(true);
 
-        const { w: widthMm, h: heightMm } = physSize();
-        let gcode = '';
+        try {
+            // Allow UI to render the overlay before starting heavy work
+            await new Promise(r => setTimeout(r, 100));
 
-        if (fileKind === 'svg' && svgTextRef.current) {
-            if (operations.length === 0) {
-                alert('Add at least one laser operation in the SVG Paths panel before generating GCode.');
-                setIsGenerating(false); return;
+            const { w: widthMm, h: heightMm } = physSize();
+            let gcode = '';
+
+            if (fileKind === 'svg' && svgTextRef.current) {
+                if (operations.length === 0) {
+                    alert('Add at least one laser operation in the SVG Paths panel before generating GCode.');
+                    return;
+                }
+                gcode = generateMultiOpGCode({ svgText: svgTextRef.current, operations, posX, posY, widthMm, heightMm });
+            } else if (fileKind === 'bitmap' && (ditheredRef.current || srcCanvasRef.current)) {
+                const canvas = ditheredRef.current ?? srcCanvasRef.current!;
+                const params = {
+                    power: opPower, minPower: opMinPower, rate: opRate, passes: opPasses, airAssist: opAirAssist,
+                    margin: opMargin, lineDistance: opLineDistance, lineAngle: opLineAngle,
+                };
+                gcode = generateRasterGCode({ ditheredCanvas: canvas, posX, posY, widthMm, heightMm, ditherMethod, params });
             }
-            gcode = generateMultiOpGCode({ svgText: svgTextRef.current, operations, posX, posY, widthMm, heightMm });
-        } else if (fileKind === 'bitmap' && (ditheredRef.current || srcCanvasRef.current)) {
-            const canvas = ditheredRef.current ?? srcCanvasRef.current!;
-            const params = {
-                power: opPower, minPower: opMinPower, rate: opRate, passes: opPasses, airAssist: opAirAssist,
-                margin: opMargin, lineDistance: opLineDistance, lineAngle: opLineAngle,
-            };
-            gcode = generateRasterGCode({ ditheredCanvas: canvas, posX, posY, widthMm, heightMm, ditherMethod, params });
-        }
 
-        setGcodeText(gcode);
-        setGCodeMoves(parseGCodeForPreview(gcode));
-        setActiveTab('gcode');
-        setGcodeView('preview');
-        setIsGenerating(false);
+            if (!gcode) return;
+
+            setGcodeText(gcode);
+            setGCodeMoves(parseGCodeForPreview(gcode));
+            setActiveTab('gcode');
+            setGcodeView('preview');
+        } catch (err) {
+            console.error('GCode Generation Error:', err);
+            alert('An error occurred while generating GCode. Check the console for details.');
+        } finally {
+            setIsGenerating(false);
+        }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [fileKind, posX, posY, scalePct, dpi, operations, ditherMethod, opPower, opRate, opPasses, opAirAssist, opMargin, opLineDistance, opLineAngle]);
 
@@ -1202,6 +1213,22 @@ export const StudioModule: React.FC = () => {
                         className="w-full py-2 text-xs text-gray-600 hover:text-gray-400 transition-colors font-bold">
                         ← Back to Design
                     </button>
+                </div>
+            )}
+            {isGenerating && (
+                <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+                    <div className="relative w-24 h-24 mb-6">
+                        {/* Spinning Neon Ring */}
+                        <div className="absolute inset-0 rounded-full border-4 border-miami-cyan/20 border-t-miami-cyan animate-spin shadow-[0_0_15px_rgba(0,240,255,0.4)]" />
+                        {/* Pulsing Beam */}
+                        <div className="absolute inset-4 rounded-full bg-miami-pink/20 animate-pulse flex items-center justify-center shadow-[0_0_30px_rgba(255,0,127,0.3)]">
+                            <div className="w-1 h-12 bg-miami-pink rounded-full blur-[1px] rotate-45" />
+                        </div>
+                    </div>
+                    <h3 className="text-miami-cyan font-black text-xl tracking-[0.2em] uppercase animate-pulse">Generating</h3>
+                    <p className="text-gray-400 text-[10px] font-mono mt-2 uppercase tracking-widest text-center px-6">
+                        Optimizing toolpaths &amp; power levels...
+                    </p>
                 </div>
             )}
         </div>
