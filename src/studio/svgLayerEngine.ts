@@ -207,29 +207,109 @@ export function generateMultiOpGCode(opts: MultiOpGCodeOptions): string {
         if (op.params.airAssist) { out.push('M8 ; air assist on'); anyAirAssist = true; }
 
         if (op.opType === 'fill') {
-            // Hatch fill: boustrophedon across each element's bounding box
+            // Shape-aware hatch fill using an off-screen canvas mask
             out.push('M4 ; dynamic laser mode');
             out.push(`F${op.params.rate}`);
 
+            // 1. Find combined bounding box of all elements in SVG units (respecting transforms)
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
             for (const el of elements) {
-                const bbox  = (el as SVGGeometryElement).getBBox();
-                const x0mm  = posX + (bbox.x              / vbW) * widthMm;
-                const y1mm  = posY + heightMm - (bbox.y              / vbH) * heightMm; // top in machine coords
-                const x1mm  = posX + ((bbox.x + bbox.width)  / vbW) * widthMm;
-                const y0mm  = posY + heightMm - ((bbox.y + bbox.height) / vbH) * heightMm; // bottom
+                const geom = el as SVGGeometryElement;
+                const bbox = geom.getBBox();
+                const ctm  = geom.getCTM();
+                const corners = [
+                    {x: bbox.x, y: bbox.y},
+                    {x: bbox.x + bbox.width, y: bbox.y},
+                    {x: bbox.x, y: bbox.y + bbox.height},
+                    {x: bbox.x + bbox.width, y: bbox.y + bbox.height}
+                ];
+                for (const c of corners) {
+                    let pt = svgEl.createSVGPoint();
+                    pt.x = c.x; pt.y = c.y;
+                    if (ctm) pt = pt.matrixTransform(ctm);
+                    minX = Math.min(minX, pt.x); maxX = Math.max(maxX, pt.x);
+                    minY = Math.min(minY, pt.y); maxY = Math.max(maxY, pt.y);
+                }
+            }
 
-                const bboxH = Math.abs(y1mm - y0mm);
-                const nLines = Math.max(1, Math.ceil(bboxH / op.params.lineDistance));
+            if (minX !== Infinity) {
+                // 2. Setup a mask canvas for the bounding box
+                // Resolution: 0.05mm per pixel for high fidelity
+                const resMm = 0.05;
+                const mmToVb = vbW / widthMm; // 1mm = ? vb units
+                
+                const boxWMm = (maxX - minX) / mmToVb;
+                const boxHMm = (maxY - minY) / mmToVb;
+                const canvasW = Math.ceil(boxWMm / resMm);
+                const canvasH = Math.ceil(boxHMm / resMm);
+                
+                // Safety: limit canvas size to prevent crashes on massive files
+                if (canvasW > 4000 || canvasH > 4000) {
+                    out.push('; WARNING: Fill operation too large, skipping.');
+                } else if (canvasW > 0 && canvasH > 0) {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = canvasW; canvas.height = canvasH;
+                    const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+                    ctx.fillStyle = 'white'; ctx.fillRect(0, 0, canvasW, canvasH);
+                    ctx.fillStyle = 'black';
 
-                for (let pass = 0; pass < op.params.passes; pass++) {
-                    if (op.params.passes > 1) out.push(`; Pass ${pass + 1}/${op.params.passes}`);
-                    for (let li = 0; li <= nLines; li++) {
-                        const y   = y1mm - li * op.params.lineDistance;
-                        const ltr = li % 2 === 0;
-                        out.push(`G0 X${(ltr ? x0mm : x1mm).toFixed(3)} Y${y.toFixed(3)} S0`);
-                        out.push(`G1 X${(ltr ? x1mm : x0mm).toFixed(3)} S${op.params.power}`);
+                    // Draw each element to the mask
+                    for (const el of elements) {
+                        const geom = el as SVGGeometryElement;
+                        const svgPath = new Path2D(geom.getAttribute('d') || '');
+                        const ctm = geom.getCTM();
+                        
+                        ctx.save();
+                        // Transform from root SVG coordinates to local canvas coordinates
+                        // (x - minX) / mmToVb -> mm, then / resMm -> pixels
+                        ctx.scale(1 / (mmToVb * resMm), 1 / (mmToVb * resMm));
+                        ctx.translate(-minX, -minY);
+                        if (ctm) ctx.transform(ctm.a, ctm.b, ctm.c, ctm.d, ctm.e, ctm.f);
+                        ctx.fill(svgPath);
+                        ctx.restore();
                     }
-                    out.push('G1 S0');
+
+                    const { data } = ctx.getImageData(0, 0, canvasW, canvasH);
+                    const isDark = (px: number, py: number) => data[(py * canvasW + px) * 4] < 128;
+
+                    // 3. Scan the mask boustrophedon
+                    const stepPx = Math.max(1, Math.round(op.params.lineDistance / resMm));
+                    
+                    for (let pass = 0; pass < op.params.passes; pass++) {
+                        if (op.params.passes > 1) out.push(`; Pass ${pass + 1}/${op.params.passes}`);
+                        
+                        for (let py = 0; py < canvasH; py += stepPx) {
+                            const ltr = (py / stepPx) % 2 === 0;
+                            const yMm = (posY + heightMm) - (minY / mmToVb) - (py * resMm);
+                            
+                            // Collect segments
+                            const segs: { x0: number; x1: number }[] = [];
+                            let startX: number | null = null;
+                            
+                            for (let px = 0; px < canvasW; px++) {
+                                const active = isDark(px, py);
+                                if (active && startX === null) startX = px;
+                                if (!active && startX !== null) {
+                                    segs.push({ x0: startX, x1: px - 1 });
+                                    startX = null;
+                                }
+                            }
+                            if (startX !== null) segs.push({ x0: startX, x1: canvasW - 1 });
+                            
+                            if (segs.length > 0) {
+                                if (!ltr) segs.reverse();
+                                for (const s of segs) {
+                                    const mX0 = (minX / mmToVb) + (s.x0 * resMm) + posX;
+                                    const mX1 = (minX / mmToVb) + (s.x1 * resMm) + posX;
+                                    const approachX = ltr ? mX0 : mX1;
+                                    const exitX     = ltr ? mX1 : mX0;
+                                    
+                                    out.push(`G0 X${approachX.toFixed(3)} Y${yMm.toFixed(3)}`);
+                                    out.push(`G1 X${exitX.toFixed(3)} S${op.params.power}`);
+                                }
+                            }
+                        }
+                    }
                 }
             }
         } else {
