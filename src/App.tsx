@@ -51,28 +51,31 @@ function App() {
         let active = true;
         
         const testAndConnect = async () => {
+            if (!base || !active) return;
+
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 3000);
+            
             try {
-                // Test connectivity of the service before attempting to connect the WS
-                const res = await fetch(`${base}/api/health`, {
-                    signal: AbortSignal.timeout(3000),
-                });
+                const normalizedBase = base.includes('://') ? base : `http://${base}`;
+                const res = await fetch(`${normalizedBase}/api/health`, { signal: controller.signal });
+                clearTimeout(timeoutId);
                 
                 if (res.ok && active) {
-                    // Test successful! Assign the wsUrl to trigger the WebSocket connection.
-                    setWsUrl(base.replace(/^http(s?):\/\//, 'ws$1://') + '/ws/telemetry');
-                } else if (active) {
-                    console.warn('[NeonBeam] Health check failed or returned non-200. Will not auto-connect WS.');
-                    setWsUrl('');
+                    const wsBase = normalizedBase.replace(/^http/, 'ws');
+                    setWsUrl(`${wsBase}/ws/telemetry`);
+                    return; // Success!
                 }
             } catch (err) {
-                if (active) {
-                    console.warn('[NeonBeam] Health check unreachable. Will not auto-connect WS.');
-                    setWsUrl('');
-                }
+                clearTimeout(timeoutId);
+            }
+
+            // If we failed or weren't OK, retry in 5s if still active
+            if (active) {
+                setTimeout(testAndConnect, 5000);
             }
         };
 
-        // If coreApiUrl is defined (or fallback exists), run the test
         if (base) {
             testAndConnect();
         }
@@ -88,7 +91,7 @@ function App() {
     const modules = ModuleRegistry.getModules();
 
     return (
-        <div className="h-dvh bg-miami-dark text-white font-sans overflow-hidden fixed inset-0 pb-safe">
+        <div className="h-dvh bg-miami-dark text-white font-sans overflow-hidden fixed inset-0 pb-safe pt-safe pt-2 overscroll-none select-none">
             <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-miami-purple/10 via-miami-dark to-miami-dark pointer-events-none" />
 
             <div className="relative z-10 w-full h-full max-w-md mx-auto bg-black/20 backdrop-blur-[2px] shadow-2xl flex flex-col">
@@ -147,7 +150,7 @@ function App() {
                             }`}
                         >
                             {/* Sticky header with back button */}
-                            <div className="h-16 flex items-center px-4 bg-black/90 border-b border-gray-800 backdrop-blur-xl sticky top-0 z-50 shadow-sm shadow-miami-pink/5 flex-shrink-0">
+                            <div className="h-14 flex items-center px-4 bg-black/90 border-b border-gray-800 backdrop-blur-xl sticky top-0 z-50 shadow-sm shadow-miami-pink/5 flex-shrink-0">
                                 <button
                                     onClick={() => navigateHome()}
                                     className="text-miami-cyan font-bold flex items-center gap-2 hover:text-white transition-colors py-2 px-3 -ml-3 rounded-lg hover:bg-white/5"

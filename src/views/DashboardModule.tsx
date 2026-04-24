@@ -56,7 +56,7 @@ const JogBtn: React.FC<{
         : 'border-miami-cyan/50 text-miami-cyan hover:bg-miami-cyan/20 hover:border-miami-cyan active:bg-miami-cyan/35';
 
     // sm = Z-axis buttons, lg = XY buttons
-    const size = sm ? 'w-16 h-16' : 'w-[4.75rem] h-[4.75rem]';
+    const size = sm ? 'w-14 h-14' : 'w-[4.25rem] h-[4.25rem]';
 
     return (
         <button
@@ -271,7 +271,7 @@ export const DashboardModule: React.FC = () => {
          * overflow-hidden: clips children so they can't break the no-scroll layout.
          * gap-2 / p-3: tight but breathable spacing.
          */
-        <div className="h-full flex flex-col gap-2 p-3 select-none overflow-hidden">
+        <div className="h-full flex flex-col gap-1 p-2 select-none overflow-hidden touch-none overscroll-none">
 
             {/* ── Row 1: Emergency Stop ───────────────────────────────────── */}
             <button
@@ -353,7 +353,14 @@ export const DashboardModule: React.FC = () => {
 
                 {/* Jog card header */}
                 <div className="flex items-center justify-between flex-shrink-0">
-                    <p className="text-[10px] uppercase text-gray-400 font-black tracking-widest">Jog Control</p>
+                    <div className="flex flex-col">
+                        <p className="text-[10px] uppercase text-gray-400 font-black tracking-widest">Jog Control</p>
+                        {!canJog && (
+                            <p className="text-[8px] font-bold text-red-400/80 font-mono tracking-tight -mt-0.5">
+                                {isAlarm ? 'ALARM — LOCK' : isOffline ? 'MCU OFFLINE' : 'JOG BLOCKED'}
+                            </p>
+                        )}
+                    </div>
 
                     {/* Live-jog toggle pill */}
                     <button
@@ -386,24 +393,20 @@ export const DashboardModule: React.FC = () => {
                     <span className="text-[10px] text-gray-500 font-mono self-center ml-0.5 flex-shrink-0">mm</span>
                 </div>
 
-                {/* Status / error line */}
-                {jogError ? (
+                {/* Error Banner (only for transient errors, not persistent status) */}
+                {jogError && (
                     <div className="flex-shrink-0 bg-red-900/30 border border-red-800 rounded-xl px-3 py-1.5">
                         <p className="text-xs text-red-400 font-bold">⚠ {jogError}</p>
                     </div>
-                ) : !canJog ? (
-                    <p className="flex-shrink-0 text-center text-xs text-gray-500 font-mono">
-                        {isAlarm ? 'ALARM — unlock first' : isOffline ? 'No connection to MCU' : 'Enable Live Jog to jog during a job'}
-                    </p>
-                ) : null}
+                )}
 
                 {/* ── Jog pad ─────────────────────────────────────── */}
-                <div className="flex-shrink-0 flex items-center justify-center gap-4">
+                <div className="flex-shrink-0 flex items-center justify-center gap-2">
 
                     {/* XY D-pad */}
-                    <div className="flex flex-col items-center gap-2">
+                    <div className="flex flex-col items-center gap-1">
                         <JogBtn label={<AxisLabel axis="Y" dir="+" />} onClick={() => jog('Y', 1)} disabled={!canJog} />
-                        <div className="flex gap-2 items-center">
+                        <div className="flex gap-1 items-center">
                             <JogBtn label={<AxisLabel axis="X" dir="-" />} onClick={() => jog('X', -1)} disabled={!canJog} />
 
                             {/* Go-to-Work-Origin button */}
@@ -411,7 +414,7 @@ export const DashboardModule: React.FC = () => {
                                 onClick={() => !isAlarm && !isOffline && sendCommand('G90 G0 X0 Y0')}
                                 disabled={isAlarm || isOffline}
                                 title="Go to Work Origin (G0 X0 Y0)"
-                                className={`w-[4.75rem] h-[4.75rem] rounded-full bg-black/80 border-2 flex items-center justify-center transition-all active:scale-95 ${
+                                className={`w-[4.25rem] h-[4.25rem] rounded-full bg-black/80 border-2 flex items-center justify-center transition-all active:scale-95 ${
                                     isAlarm || isOffline ? 'border-gray-800 opacity-25 cursor-not-allowed' : 'border-gray-700 hover:border-miami-cyan/60'
                                 }`}
                             >
@@ -433,7 +436,7 @@ export const DashboardModule: React.FC = () => {
 
                     {/* Z axis (if enabled) */}
                     {zAxisEnabled && (
-                        <div className="flex flex-col items-center gap-2">
+                        <div className="flex flex-col items-center gap-1">
                             <JogBtn label={<AxisLabel axis="Z" dir="+" />} onClick={() => jog('Z', 1)} disabled={!canJog} color="purple" sm />
                             <div className="w-px h-3 bg-gray-800" />
                             <JogBtn label={<AxisLabel axis="Z" dir="-" />} onClick={() => jog('Z', -1)} disabled={!canJog} color="purple" sm />
@@ -442,7 +445,7 @@ export const DashboardModule: React.FC = () => {
                 </div>
 
                 {/* ── Macro Grid (replaces Homing/Work Origin) ────────────── */}
-                <div className="flex-shrink-0 grid grid-cols-3 gap-2 relative">
+                <div className="flex-shrink-0 grid grid-cols-3 gap-1 relative">
                     {(() => {
                         const getColorClasses = (color = 'cyan', isToggleOn = false) => {
                             if (isToggleOn) {
@@ -481,7 +484,7 @@ export const DashboardModule: React.FC = () => {
                                 onClick={() => m && executeMacro(m)}
                                 disabled={disabled}
                                 title={m && !m.isBuiltIn ? m.gcode : undefined}
-                                className={`py-2.5 text-[10px] font-black uppercase tracking-wide rounded-xl border transition-all active:scale-95 flex flex-col items-center justify-center text-center px-1 overflow-hidden
+                                className={`h-11 text-[10px] font-black uppercase tracking-wide rounded-xl border transition-all active:scale-95 flex flex-col items-center justify-center text-center px-1 overflow-hidden
                                         ${!m ? 'bg-black/20 border-gray-800/50 cursor-default' : 
                                       disabled ? 'bg-black/20 border-gray-800 text-gray-700 cursor-not-allowed' :
                                       m.isBuiltIn ? 'bg-gradient-to-b from-miami-cyan/80 to-blue-500/70 text-black border-transparent hover:shadow-[0_0_14px_rgba(0,240,255,0.45)]' :
@@ -498,19 +501,19 @@ export const DashboardModule: React.FC = () => {
                         );
                     })}
 
-                    {/* 12th slot: overflow dropdown or last macro */}
+                    {/* 12th slot: overflow dropdown OR macro 12 */}
                     {(() => {
-                        const unassignedMacros = macros.filter(m => !layout.includes(m.id));
-                        const slot11Macro = layout[11] ? macros.find(x => x.id === layout[11]) : null;
+                        const assignedPrefix = layout.slice(0, 11);
+                        const overflowMacros = macros.filter(m => !assignedPrefix.includes(m.id));
                         
-                        if (unassignedMacros.length > 0) {
+                        if (overflowMacros.length > 1) {
                             return (
                                 <div className="relative">
                                     <button 
                                         onClick={() => setShowOverflow(!showOverflow)}
-                                        className="w-full h-full py-2.5 text-[10px] bg-black/60 font-black uppercase tracking-wide rounded-xl border border-gray-700 text-gray-300 hover:border-miami-cyan/50 transition-all flex items-center justify-center"
+                                        className="w-full h-11 text-[10px] bg-black/60 font-black uppercase tracking-wide rounded-xl border border-gray-700 text-gray-300 hover:border-miami-cyan/50 transition-all flex items-center justify-center"
                                     >
-                                        More ({unassignedMacros.length}) ▾
+                                        More ({overflowMacros.length}) ▾
                                     </button>
                                     
                                     {showOverflow && (
@@ -518,7 +521,7 @@ export const DashboardModule: React.FC = () => {
                                             <div className="fixed inset-0 z-40" onClick={() => setShowOverflow(false)} />
                                             <div className="absolute bottom-full right-0 mb-2 w-48 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
                                                 <div className="max-h-48 overflow-y-auto">
-                                                    {unassignedMacros.map(um => (
+                                                    {overflowMacros.map(um => (
                                                         <button
                                                             key={um.id}
                                                             onClick={() => { executeMacro(um); setShowOverflow(false); }}
@@ -544,23 +547,23 @@ export const DashboardModule: React.FC = () => {
                                 </div>
                             );
                         } else {
-                            const disabled = !slot11Macro || isOffline || (slot11Macro.isBuiltIn && slot11Macro.id.startsWith('builtin_set_') && isAlarm);
-                            const isToggleOn = slot11Macro ? (toggleStates[slot11Macro.id] ?? false) : false;
+                            const m = overflowMacros[0] || null;
+                            const disabled = !m || isOffline || (m.isBuiltIn && m.id.startsWith('builtin_set_') && isAlarm);
+                            const isToggleOn = m ? (toggleStates[m.id] ?? false) : false;
                             
                             return (
                                 <button
-                                    onClick={() => slot11Macro && executeMacro(slot11Macro)}
+                                    onClick={() => m && executeMacro(m)}
                                     disabled={disabled}
-                                    title={slot11Macro && !slot11Macro.isBuiltIn ? slot11Macro.gcode : undefined}
-                                    className={`py-2.5 text-[10px] font-black uppercase tracking-wide rounded-xl border transition-all active:scale-95 flex flex-col items-center justify-center text-center px-1 overflow-hidden
-                                        ${!slot11Macro ? 'bg-black/20 border-gray-800/50 cursor-default' : 
+                                    className={`h-11 text-[10px] font-black uppercase tracking-wide rounded-xl border transition-all active:scale-95 flex flex-col items-center justify-center text-center px-1 overflow-hidden
+                                        ${!m ? 'bg-black/20 border-gray-800/50 cursor-default' : 
                                           disabled ? 'bg-black/20 border-gray-800 text-gray-700 cursor-not-allowed' :
-                                          slot11Macro.isBuiltIn ? 'bg-gradient-to-b from-miami-cyan/80 to-blue-500/70 text-black border-transparent hover:shadow-[0_0_14px_rgba(0,240,255,0.45)]' :
-                                          getColorClasses(slot11Macro.color, isToggleOn)
+                                          m.isBuiltIn ? 'bg-gradient-to-b from-miami-cyan/80 to-blue-500/70 text-black border-transparent hover:shadow-[0_0_14px_rgba(0,240,255,0.45)]' :
+                                          getColorClasses(m.color, isToggleOn)
                                         }`}
                                 >
-                                    <span className="truncate w-full">{slot11Macro ? slot11Macro.label : ''}</span>
-                                    {slot11Macro?.isToggle && (
+                                    <span className="truncate w-full">{m ? m.label : ''}</span>
+                                    {m?.isToggle && (
                                         <span className={`text-[7px] leading-tight block w-full mt-0.5 ${isToggleOn ? 'text-black font-black' : 'text-gray-500'}`}>
                                             {isToggleOn ? '• ON' : '○ OFF'}
                                         </span>
