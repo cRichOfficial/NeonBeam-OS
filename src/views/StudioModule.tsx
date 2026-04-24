@@ -3,6 +3,7 @@ import axios from 'axios';
 import { useAppSettingsStore } from '../store/appSettingsStore';
 import { usePresetsStore } from '../store/presetsStore';
 import { useJobStore } from '../store/jobStore';
+import { NumericInput } from '../components/NumericInput';
 import { useNavigationStore } from '../store/navigationStore';
 import { generateRasterGCode, parseGCodeForPreview, type PreviewMove } from '../studio/gcodeEngine';
 import { parseSvgPaths, generateMultiOpGCode } from '../studio/svgLayerEngine';
@@ -826,31 +827,32 @@ export const StudioModule: React.FC = () => {
                                                     <div className="grid grid-cols-2 gap-2">
                                                         <div>
                                                             <label className="block text-[9px] text-gray-500 mb-1 uppercase font-bold">Power (0–1000 S)</label>
-                                                            <input type="number" min={0} max={1000} value={op.params.power}
-                                                                onChange={e => updateParams(op.id, { power: +e.target.value })}
+                                                            <NumericInput value={op.params.power}
+                                                                onChange={val => updateParams(op.id, { power: val })}
+                                                                min={0}
                                                                 className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-lg p-1.5 text-white text-sm font-mono outline-none" />
                                                         </div>
                                                         <div>
                                                             <label className="block text-[9px] text-gray-500 mb-1 uppercase font-bold">Feed ({feedUnits})</label>
-                                                            <input type="number"
-                                                                min={feedUnits === 'mm/s' ? 0.1 : 1}
-                                                                max={feedUnits === 'mm/s' ? 167 : 10000}
-                                                                step={feedUnits === 'mm/s' ? 0.5 : 50}
+                                                            <NumericInput
                                                                 value={feedUnits === 'mm/s' ? +(op.params.rate / 60).toFixed(2) : op.params.rate}
-                                                                onChange={e => updateParams(op.id, { rate: feedUnits === 'mm/s' ? Math.round(+e.target.value * 60) : +e.target.value })}
+                                                                onChange={val => updateParams(op.id, { rate: feedUnits === 'mm/s' ? Math.round(val * 60) : val })}
+                                                                min={0}
                                                                 className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-lg p-1.5 text-white text-sm font-mono outline-none" />
                                                         </div>
                                                         <div>
                                                             <label className="block text-[9px] text-gray-500 mb-1 uppercase font-bold">Passes</label>
-                                                            <input type="number" min={1} max={20} value={op.params.passes}
-                                                                onChange={e => updateParams(op.id, { passes: +e.target.value })}
+                                                            <NumericInput value={op.params.passes}
+                                                                onChange={val => updateParams(op.id, { passes: val })}
+                                                                min={1}
                                                                 className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-lg p-1.5 text-white text-sm font-mono outline-none" />
                                                         </div>
                                                         {op.opType === 'fill' && (
                                                             <div>
                                                                 <label className="block text-[9px] text-gray-500 mb-1 uppercase font-bold">Line Dist (mm)</label>
-                                                                <input type="number" min={0.01} max={10} step={0.01} value={op.params.lineDistance}
-                                                                    onChange={e => updateParams(op.id, { lineDistance: +e.target.value })}
+                                                                <NumericInput value={op.params.lineDistance}
+                                                                    onChange={val => updateParams(op.id, { lineDistance: val })}
+                                                                    min={0.01}
                                                                     className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-lg p-1.5 text-white text-sm font-mono outline-none" />
                                                             </div>
                                                         )}
@@ -983,13 +985,10 @@ export const StudioModule: React.FC = () => {
                                     <label className="block text-[9px] text-gray-400 mb-1 uppercase font-bold">
                                         Feed Rate ({displayRateUnit})
                                     </label>
-                                    <input
-                                        type="number"
-                                        min={feedUnits === 'mm/s' ? 0.1 : 1}
-                                        max={displayRateMax}
-                                        step={displayRateStep}
+                                    <NumericInput
                                         value={displayRate}
-                                        onChange={e => setDisplayRate(Number(e.target.value))}
+                                        onChange={val => setDisplayRate(val)}
+                                        min={0}
                                         className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-lg p-2 text-white text-sm font-mono outline-none transition-colors"
                                     />
                                     {feedUnits === 'mm/s' && (
@@ -1000,7 +999,7 @@ export const StudioModule: React.FC = () => {
                                 </div>
                                 <div>
                                     <label className="block text-[9px] text-gray-400 mb-1 uppercase font-bold">Passes</label>
-                                    <input type="number" min={1} max={20} value={opPasses} onChange={e => setOpPasses(Number(e.target.value))}
+                                    <NumericInput value={opPasses} onChange={val => setOpPasses(val)} min={1}
                                         className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-lg p-2 text-white text-sm font-mono outline-none transition-colors" />
                                 </div>
                             </div>
@@ -1010,12 +1009,12 @@ export const StudioModule: React.FC = () => {
                                 <div className="grid grid-cols-2 gap-2">
                                     <div>
                                         <label className="block text-[9px] text-gray-400 mb-1 uppercase font-bold">Line Dist (mm)</label>
-                                        <input type="number" min={0.01} max={10} step={0.01} value={opLineDistance} onChange={e => setOpLineDistance(Number(e.target.value))}
+                                        <NumericInput value={opLineDistance} onChange={val => setOpLineDistance(val)} min={0.01}
                                             className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-lg p-2 text-white text-sm font-mono outline-none transition-colors" />
                                     </div>
                                     <div>
                                         <label className="block text-[9px] text-gray-400 mb-1 uppercase font-bold">Scan Angle (°)</label>
-                                        <input type="number" min={0} max={180} step={5} value={opLineAngle} onChange={e => setOpLineAngle(Number(e.target.value))}
+                                        <NumericInput value={opLineAngle} onChange={val => setOpLineAngle(val)}
                                             className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-lg p-2 text-white text-sm font-mono outline-none transition-colors" />
                                     </div>
                                 </div>
@@ -1025,7 +1024,7 @@ export const StudioModule: React.FC = () => {
                             <div className="grid grid-cols-2 gap-2 items-start">
                                 <div>
                                     <label className="block text-[9px] text-gray-400 mb-1 uppercase font-bold">Overscan Margin (mm)</label>
-                                    <input type="number" min={0} max={20} step={0.5} value={opMargin} onChange={e => setOpMargin(Number(e.target.value))}
+                                    <NumericInput value={opMargin} onChange={val => setOpMargin(val)} min={0}
                                         className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-lg p-2 text-white text-sm font-mono outline-none transition-colors" />
                                 </div>
                                 <div>
@@ -1045,14 +1044,15 @@ export const StudioModule: React.FC = () => {
                             <p className="text-[10px] uppercase text-gray-400 font-bold tracking-widest mb-2.5">Position, Scale &amp; DPI</p>
                             <div className="grid grid-cols-3 gap-2 mb-3">
                                 {[
-                                    { label: 'X (mm)',  value: posX,     min: 0, max: mmW, step: 1, set: setPosX },
-                                    { label: 'Y (mm)',  value: posY,     min: 0, max: mmH, step: 1, set: setPosY },
+                                    { label: 'X (mm)',  value: posX,     min: undefined, max: mmW, step: 1, set: setPosX },
+                                    { label: 'Y (mm)',  value: posY,     min: undefined, max: mmH, step: 1, set: setPosY },
                                     { label: 'Scale %', value: scalePct, min: 1, max: 500, step: 5, set: setScalePct },
                                 ].map(({ label, value, min, max, step, set }) => (
                                     <div key={label}>
                                         <label className="block text-[9px] text-gray-400 mb-1 uppercase font-bold">{label}</label>
-                                        <input type="number" value={value} min={min} max={max} step={step}
-                                            onChange={e => { set(Number(e.target.value)); bumpRender(); }}
+                                        <NumericInput value={value}
+                                            onChange={val => { set(val); bumpRender(); }}
+                                            min={min}
                                             className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-lg p-2 text-white text-sm font-mono outline-none transition-colors" />
                                     </div>
                                 ))}
@@ -1063,9 +1063,10 @@ export const StudioModule: React.FC = () => {
                                         <label className="block text-[9px] text-gray-400 mb-1 uppercase font-bold">
                                             {fileKind === 'svg' ? 'SVG DPI' : 'Bitmap DPI'}
                                         </label>
-                                        <input type="number" min={1} max={2400} value={dpi}
-                                            onChange={e => { setDpi(Number(e.target.value)); bumpRender(); }}
-                                            className="w-full bg-black border border-gray-700 focus:border-miami-pink rounded-lg p-2 text-white text-sm font-mono outline-none transition-colors" />
+                                        <NumericInput value={dpi}
+                                            onChange={val => { setDpi(val); bumpRender(); }}
+                                            min={1}
+                                            className="w-full bg-black border border-gray-700 focus:border-miami-pink rounded-lg p-2 text-white font-mono outline-none transition-colors" />
                                     </div>
                                     <div className="flex gap-1 mt-4 flex-shrink-0">
                                         {[72, 96, 300].map(d => (

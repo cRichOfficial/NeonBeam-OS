@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { usePresetsStore } from '../store/presetsStore';
 import type { MaterialPreset } from '../store/presetsStore';
 import { useAppSettingsStore } from '../store/appSettingsStore';
+import { NumericInput } from '../components/NumericInput';
 
 const defaultNewForm: Partial<MaterialPreset> = {
     name: 'New Custom Profile',
@@ -109,29 +110,29 @@ export const MaterialPresetsModule: React.FC = () => {
                 
                 <div>
                     <label className="block text-[10px] uppercase text-miami-pink mb-1">Laser Power (S)</label>
-                    <input type="number" max={1000} value={formState.power} onChange={e => setFormState({...formState, power: Number(e.target.value)})} className="w-full bg-black/80 border border-gray-700 focus:border-miami-pink rounded-lg p-2 text-sm text-white outline-none font-mono" />
+                    <NumericInput value={formState.power || 0} onChange={val => setFormState({...formState, power: val})} min={0} className="w-full bg-black/80 border border-gray-700 focus:border-miami-pink rounded-lg p-2 text-sm text-white outline-none font-mono" />
                 </div>
                 <div>
                     <label className="block text-[10px] uppercase text-miami-cyan mb-1">Rate ({feedUnits})</label>
-                    <input type="number" value={formState.rate} onChange={e => setFormState({...formState, rate: Number(e.target.value)})} className="w-full bg-black/80 border border-gray-700 focus:border-miami-cyan rounded-lg p-2 text-sm text-white outline-none font-mono" />
+                    <NumericInput value={formState.rate || 0} onChange={val => setFormState({...formState, rate: val})} min={0} className="w-full bg-black/80 border border-gray-700 focus:border-miami-cyan rounded-lg p-2 text-sm text-white outline-none font-mono" />
                 </div>
 
                 <div>
                     <label className="block text-[10px] uppercase text-gray-300 mb-1">Line Dist (mm)</label>
-                    <input type="number" step="0.01" value={formState.lineDistance} onChange={e => setFormState({...formState, lineDistance: Number(e.target.value)})} className="w-full bg-black/80 border border-gray-700 focus:border-gray-500 rounded-lg p-2 text-sm text-white outline-none font-mono" />
+                    <NumericInput value={formState.lineDistance || 0} onChange={val => setFormState({...formState, lineDistance: val})} min={0} className="w-full bg-black/80 border border-gray-700 focus:border-gray-500 rounded-lg p-2 text-sm text-white outline-none font-mono" />
                 </div>
                 <div>
                     <label className="block text-[10px] uppercase text-gray-300 mb-1">Fill Angle (°)</label>
-                    <input type="number" value={formState.lineAngle} onChange={e => setFormState({...formState, lineAngle: Number(e.target.value)})} className="w-full bg-black/80 border border-gray-700 focus:border-gray-500 rounded-lg p-2 text-sm text-white outline-none font-mono" />
+                    <NumericInput value={formState.lineAngle || 0} onChange={val => setFormState({...formState, lineAngle: val})} className="w-full bg-black/80 border border-gray-700 focus:border-gray-500 rounded-lg p-2 text-sm text-white outline-none font-mono" />
                 </div>
 
                 <div>
                     <label className="block text-[10px] uppercase text-gray-300 mb-1">Margin (mm)</label>
-                    <input type="number" value={formState.margin} onChange={e => setFormState({...formState, margin: Number(e.target.value)})} className="w-full bg-black/80 border border-gray-700 focus:border-gray-500 rounded-lg p-2 text-sm text-white outline-none font-mono" />
+                    <NumericInput value={formState.margin || 0} onChange={val => setFormState({...formState, margin: val})} min={0} className="w-full bg-black/80 border border-gray-700 focus:border-gray-500 rounded-lg p-2 text-sm text-white outline-none font-mono" />
                 </div>
                 <div>
                     <label className="block text-[10px] uppercase text-gray-300 mb-1">Total Passes</label>
-                    <input type="number" value={formState.passes} onChange={e => setFormState({...formState, passes: Number(e.target.value)})} className="w-full bg-black/80 border border-gray-700 focus:border-gray-500 rounded-lg p-2 text-sm text-white outline-none font-mono" />
+                    <NumericInput value={formState.passes || 1} onChange={val => setFormState({...formState, passes: val})} min={1} className="w-full bg-black/80 border border-gray-700 focus:border-gray-500 rounded-lg p-2 text-sm text-white outline-none font-mono" />
                 </div>
             </div>
 

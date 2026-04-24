@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import axios from 'axios';
 import { useAppSettingsStore } from '../store/appSettingsStore';
+import { NumericInput } from '../components/NumericInput';
 
 // ── Tab types ─────────────────────────────────────────────────────────────────
 type Tab = 'workspace' | 'firmware';
@@ -133,18 +134,18 @@ export const MachineSettingsModule: React.FC = () => {
                         <div className="grid grid-cols-2 gap-4 mb-4">
                             <div>
                                 <label className="block text-[10px] uppercase text-gray-300 mb-1">X Width (mm)</label>
-                                <input type="number" value={settings.machineWidth}  onChange={e => updateSettings({ machineWidth:  Number(e.target.value) })} className="w-full bg-black/60 border border-gray-700 focus:border-miami-cyan rounded-lg p-2 text-white font-mono outline-none transition-colors" />
+                                <NumericInput value={settings.machineWidth}  onChange={val => updateSettings({ machineWidth:  val })} min={1} className="w-full bg-black/60 border border-gray-700 focus:border-miami-cyan rounded-lg p-2 text-white font-mono outline-none transition-colors" />
                             </div>
                             <div>
                                 <label className="block text-[10px] uppercase text-gray-300 mb-1">Y Height (mm)</label>
-                                <input type="number" value={settings.machineHeight} onChange={e => updateSettings({ machineHeight: Number(e.target.value) })} className="w-full bg-black/60 border border-gray-700 focus:border-miami-cyan rounded-lg p-2 text-white font-mono outline-none transition-colors" />
+                                <NumericInput value={settings.machineHeight} onChange={val => updateSettings({ machineHeight: val })} min={1} className="w-full bg-black/60 border border-gray-700 focus:border-miami-cyan rounded-lg p-2 text-white font-mono outline-none transition-colors" />
                             </div>
                         </div>
 
                         <div className="grid grid-cols-2 gap-x-4 gap-y-4">
                             <div>
                                 <label className="block text-[10px] uppercase text-miami-pink mb-1">Laser Kerf / Beam (mm)</label>
-                                <input type="number" step="0.01" value={settings.toolHeadSize} onChange={e => updateSettings({ toolHeadSize: Number(e.target.value) })} className="w-full bg-black/60 border border-miami-pink/30 focus:border-miami-pink rounded-lg p-2 text-white font-mono outline-none transition-colors" />
+                                <NumericInput value={settings.toolHeadSize} onChange={val => updateSettings({ toolHeadSize: val })} min={0} className="w-full bg-black/60 border border-miami-pink/30 focus:border-miami-pink rounded-lg p-2 text-white font-mono outline-none transition-colors" />
                             </div>
 
                             {/* Z Axis Enable */}
@@ -163,23 +164,23 @@ export const MachineSettingsModule: React.FC = () => {
 
                             <div className={settings.zAxisEnabled ? '' : 'opacity-40 pointer-events-none'}>
                                 <label className="block text-[10px] uppercase text-gray-300 mb-1">Z-Probe Offset (mm)</label>
-                                <input type="number" step="0.1" value={settings.zProbeOffset} onChange={e => updateSettings({ zProbeOffset: Number(e.target.value) })} className="w-full bg-black/60 border border-gray-700 focus:border-gray-400 rounded-lg p-2 text-white font-mono outline-none transition-colors" />
+                                <NumericInput value={settings.zProbeOffset} onChange={val => updateSettings({ zProbeOffset: val })} className="w-full bg-black/60 border border-gray-700 focus:border-gray-400 rounded-lg p-2 text-white font-mono outline-none transition-colors" />
                             </div>
                             <div>
                                 <label className="block text-[10px] uppercase text-gray-300 mb-1">Camera/Probe Offset X</label>
-                                <input type="number" value={settings.probeOffsetX} onChange={e => updateSettings({ probeOffsetX: Number(e.target.value) })} className="w-full bg-black/60 border border-gray-700 focus:border-gray-400 rounded-lg p-2 text-white font-mono outline-none transition-colors" />
+                                <NumericInput value={settings.probeOffsetX} onChange={val => updateSettings({ probeOffsetX: val })} className="w-full bg-black/60 border border-gray-700 focus:border-gray-400 rounded-lg p-2 text-white font-mono outline-none transition-colors" />
                             </div>
                             <div>
                                 <label className="block text-[10px] uppercase text-gray-300 mb-1">Camera/Probe Offset Y</label>
-                                <input type="number" value={settings.probeOffsetY} onChange={e => updateSettings({ probeOffsetY: Number(e.target.value) })} className="w-full bg-black/60 border border-gray-700 focus:border-gray-400 rounded-lg p-2 text-white font-mono outline-none transition-colors" />
+                                <NumericInput value={settings.probeOffsetY} onChange={val => updateSettings({ probeOffsetY: val })} className="w-full bg-black/60 border border-gray-700 focus:border-gray-400 rounded-lg p-2 text-white font-mono outline-none transition-colors" />
                             </div>
                             <div>
                                 <label className="block text-[10px] uppercase text-gray-300 mb-1">Homing Offset X (G92)</label>
-                                <input type="number" value={settings.homingOffsetX} onChange={e => updateSettings({ homingOffsetX: Number(e.target.value) })} className="w-full bg-black/60 border border-gray-700 focus:border-gray-400 rounded-lg p-2 text-white font-mono outline-none transition-colors" />
+                                <NumericInput value={settings.homingOffsetX} onChange={val => updateSettings({ homingOffsetX: val })} className="w-full bg-black/60 border border-gray-700 focus:border-gray-400 rounded-lg p-2 text-white font-mono outline-none transition-colors" />
                             </div>
                             <div>
                                 <label className="block text-[10px] uppercase text-gray-300 mb-1">Homing Offset Y (G92)</label>
-                                <input type="number" value={settings.homingOffsetY} onChange={e => updateSettings({ homingOffsetY: Number(e.target.value) })} className="w-full bg-black/60 border border-gray-700 focus:border-gray-400 rounded-lg p-2 text-white font-mono outline-none transition-colors" />
+                                <NumericInput value={settings.homingOffsetY} onChange={val => updateSettings({ homingOffsetY: val })} className="w-full bg-black/60 border border-gray-700 focus:border-gray-400 rounded-lg p-2 text-white font-mono outline-none transition-colors" />
                             </div>
                         </div>
                     </div>
@@ -240,10 +241,9 @@ export const MachineSettingsModule: React.FC = () => {
                                                 <span className={`text-xs font-black font-mono ${isDirty ? 'text-yellow-400' : 'text-miami-cyan'}`}>{key}</span>
                                             </div>
                                             <span className="flex-1 text-[10px] text-gray-400 truncate">{settingLabel(key)}</span>
-                                            <input
-                                                type="number"
+                                            <NumericInput
                                                 value={fwSettings[key]}
-                                                onChange={e => handleFwChange(key, parseFloat(e.target.value))}
+                                                onChange={val => handleFwChange(key, val)}
                                                 className={`w-24 bg-black/60 border rounded-lg px-2 py-1 text-xs font-mono text-right outline-none transition-colors ${
                                                     isDirty
                                                         ? 'border-yellow-500/50 text-yellow-300 focus:border-yellow-400'

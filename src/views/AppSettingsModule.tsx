@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { useAppSettingsStore } from '../store/appSettingsStore';
+import { NumericInput } from '../components/NumericInput';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface DiscoveredService {
@@ -163,19 +164,19 @@ export const AppSettingsModule: React.FC = () => {
                     <div className="grid grid-cols-2 gap-4 mb-4">
                         <div>
                             <label className="block text-[10px] uppercase text-gray-300 mb-1">Canvas Width</label>
-                            <input type="number" value={settings.gridWidth}   onChange={e => updateSettings({ gridWidth:   Number(e.target.value) })} className="w-full bg-black/60 border border-gray-700 rounded-lg p-2 text-white font-mono outline-none" />
+                            <NumericInput value={settings.gridWidth}   onChange={val => updateSettings({ gridWidth:   val })} min={1} className="w-full bg-black/60 border border-gray-700 rounded-lg p-2 text-white font-mono outline-none" />
                         </div>
                         <div>
                             <label className="block text-[10px] uppercase text-gray-300 mb-1">Canvas Height</label>
-                            <input type="number" value={settings.gridHeight}  onChange={e => updateSettings({ gridHeight:  Number(e.target.value) })} className="w-full bg-black/60 border border-gray-700 rounded-lg p-2 text-white font-mono outline-none" />
+                            <NumericInput value={settings.gridHeight}  onChange={val => updateSettings({ gridHeight:  val })} min={1} className="w-full bg-black/60 border border-gray-700 rounded-lg p-2 text-white font-mono outline-none" />
                         </div>
                         <div>
                             <label className="block text-[10px] uppercase text-gray-300 mb-1">Major Rules (Spacing)</label>
-                            <input type="number" value={settings.majorSpacing} onChange={e => updateSettings({ majorSpacing: Number(e.target.value) })} className="w-full bg-black/60 border border-gray-700 rounded-lg p-2 text-white font-mono outline-none" />
+                            <NumericInput value={settings.majorSpacing} onChange={val => updateSettings({ majorSpacing: val })} min={1} className="w-full bg-black/60 border border-gray-700 rounded-lg p-2 text-white font-mono outline-none" />
                         </div>
                         <div>
                             <label className="block text-[10px] uppercase text-gray-300 mb-1">Minor Rules Grid</label>
-                            <input type="number" value={settings.minorSpacing} onChange={e => updateSettings({ minorSpacing: Number(e.target.value) })} className="w-full bg-black/60 border border-gray-700 rounded-lg p-2 text-white font-mono outline-none" />
+                            <NumericInput value={settings.minorSpacing} onChange={val => updateSettings({ minorSpacing: val })} min={1} className="w-full bg-black/60 border border-gray-700 rounded-lg p-2 text-white font-mono outline-none" />
                         </div>
                     </div>
 
@@ -186,10 +187,10 @@ export const AppSettingsModule: React.FC = () => {
                                 <span className="block text-xs font-bold text-gray-200">SVG Import DPI</span>
                                 <span className="block text-[10px] text-gray-500 mt-0.5">px → mm for vector files · CSS standard is 96</span>
                             </div>
-                            <input
-                                type="number" min={1} max={2400}
+                            <NumericInput
+                                min={1} max={2400}
                                 value={settings.svgDpi}
-                                onChange={e => updateSettings({ svgDpi: Number(e.target.value) })}
+                                onChange={val => updateSettings({ svgDpi: val })}
                                 className="w-20 bg-black/60 border border-gray-700 focus:border-miami-cyan rounded-lg p-2 text-white font-mono text-sm outline-none transition-colors text-center"
                             />
                         </div>
@@ -216,10 +217,10 @@ export const AppSettingsModule: React.FC = () => {
                                 <span className="block text-xs font-bold text-gray-200">Bitmap Import DPI</span>
                                 <span className="block text-[10px] text-gray-500 mt-0.5">px → mm for raster images · print scans often 300+</span>
                             </div>
-                            <input
-                                type="number" min={1} max={2400}
+                            <NumericInput
+                                min={1} max={2400}
                                 value={settings.bitmapDpi}
-                                onChange={e => updateSettings({ bitmapDpi: Number(e.target.value) })}
+                                onChange={val => updateSettings({ bitmapDpi: val })}
                                 className="w-20 bg-black/60 border border-miami-pink/30 focus:border-miami-pink rounded-lg p-2 text-white font-mono text-sm outline-none transition-colors text-center"
                             />
                         </div>
