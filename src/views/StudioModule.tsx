@@ -280,7 +280,7 @@ export const StudioModule: React.FC = () => {
         if (!ctx) return;
 
         ctx.fillStyle = '#080808'; ctx.fillRect(0, 0, CW, CH);
-        ctx.fillStyle = '#0d0d0d'; ctx.fillRect(ML, 0, plotW, plotH);
+        ctx.fillStyle = '#111111'; ctx.fillRect(ML, 0, plotW, plotH);
         ctx.strokeStyle = 'rgba(112,0,255,0.18)'; ctx.lineWidth = 1;
         ctx.strokeRect(ML, 0, plotW, plotH);
 
@@ -364,6 +364,10 @@ export const StudioModule: React.FC = () => {
             } else {
                 // Design preview
                 if (fileKind === 'svg') {
+                    // Dark gray artboard backing so black strokes/fills are visible
+                    ctx.fillStyle = '#2a2a2a';
+                    ctx.fillRect(dxPx, dyPx, dwPx, dhPx);
+
                     ctx.globalAlpha = 0.88;
                     ctx.drawImage(img, dxPx, dyPx, dwPx, dhPx);
                     ctx.globalAlpha = 1;
