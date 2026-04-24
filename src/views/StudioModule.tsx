@@ -304,16 +304,25 @@ export const StudioModule: React.FC = () => {
         ctx.strokeStyle = 'rgba(112,0,255,0.18)'; ctx.lineWidth = 1 / viewZoom;
         ctx.strokeRect(ML, 0, plotW, plotH);
 
+        // 3. Grid (Infinite/Extended)
+        const gMinX = -2000, gMaxX = 2000, gMinY = -2000, gMaxY = 2000;
+
         // Minor grid
-        ctx.beginPath(); ctx.strokeStyle = 'rgba(0,240,255,0.04)'; ctx.lineWidth = 0.5;
-        for (let x=0;x<=mmW;x+=minor){const px=ML+x*scX;ctx.moveTo(px,0);ctx.lineTo(px,plotH);}
-        for (let y=0;y<=mmH;y+=minor){const py=plotH-y*scY;ctx.moveTo(ML,py);ctx.lineTo(ML+plotW,py);}
+        ctx.beginPath(); ctx.strokeStyle = 'rgba(0,240,255,0.04)'; ctx.lineWidth = 0.5 / viewZoom;
+        for (let x = Math.floor(gMinX/minor)*minor; x <= gMaxX; x += minor) { const px = ML + x * scX; ctx.moveTo(px, -2000); ctx.lineTo(px, 2000); }
+        for (let y = Math.floor(gMinY/minor)*minor; y <= gMaxY; y += minor) { const py = plotH - y * scY; ctx.moveTo(-2000, py); ctx.lineTo(2000, py); }
         ctx.stroke();
 
         // Major grid
-        ctx.beginPath(); ctx.strokeStyle = 'rgba(0,240,255,0.11)'; ctx.lineWidth = 1;
-        for (let x=0;x<=mmW;x+=major){const px=ML+x*scX;ctx.moveTo(px,0);ctx.lineTo(px,plotH);}
-        for (let y=0;y<=mmH;y+=major){const py=plotH-y*scY;ctx.moveTo(ML,py);ctx.lineTo(ML+plotW,py);}
+        ctx.beginPath(); ctx.strokeStyle = 'rgba(0,240,255,0.11)'; ctx.lineWidth = 1 / viewZoom;
+        for (let x = Math.floor(gMinX/major)*major; x <= gMaxX; x += major) { const px = ML + x * scX; ctx.moveTo(px, -2000); ctx.lineTo(px, 2000); }
+        for (let y = Math.floor(gMinY/major)*major; y <= gMaxY; y += major) { const py = plotH - y * scY; ctx.moveTo(-2000, py); ctx.lineTo(2000, py); }
+        ctx.stroke();
+
+        // 4. Origin Highlight (Thick X=0, Y=0 lines)
+        ctx.beginPath(); ctx.strokeStyle = 'rgba(0,240,255,0.25)'; ctx.lineWidth = 2.5 / viewZoom;
+        ctx.moveTo(ML, -2000); ctx.lineTo(ML, 2000); // X=0
+        ctx.moveTo(-2000, plotH); ctx.lineTo(2000, plotH); // Y=0
         ctx.stroke();
 
         const img = designImgRef.current;
@@ -427,22 +436,24 @@ export const StudioModule: React.FC = () => {
 
         // X Labels (Bottom-docked, move horizontally)
         ctx.textBaseline = 'bottom'; ctx.textAlign = 'center';
-        for (let x = 0; x <= mmW; x += major) {
+        const minX = Math.floor((-viewOffsetX - ML) / scX / major) * major;
+        const maxX = Math.ceil((CW - viewOffsetX - ML) / scX / major) * major;
+        for (let x = minX; x <= maxX; x += major) {
             const px = ML + viewOffsetX + x * scX;
-            // Only draw if within the plot area horizontally
-            if (px >= ML - 1 && px <= ML + plotW + 1) { 
-                 if (px >= ML && px <= CW) ctx.fillText(`${x}`, px, CH - 1);
-            }
+            if (px >= ML && px <= CW) ctx.fillText(`${x}`, px, CH - 1);
         }
 
         // Y Labels (Left-docked, move vertically)
         ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-        for (let y = 0; y <= mmH; y += major) {
+        const y_low  = (plotH + viewOffsetY - (CH - MB)) / scY;
+        const y_high = (plotH + viewOffsetY) / scY;
+        const minY = Math.floor(Math.min(y_low, y_high) / major) * major;
+        const maxY = Math.ceil(Math.max(y_low, y_high) / major) * major;
+
+        for (let y = minY; y <= maxY; y += major) {
             if (y === 0) continue;
             const py = (plotH + viewOffsetY) - y * scY;
-            if (py >= 0 && py <= plotH + viewOffsetY) {
-                 if (py >= 0 && py <= CH - MB) ctx.fillText(`${y}`, ML - 4, py);
-            }
+            if (py >= 0 && py <= CH - MB) ctx.fillText(`${y}`, ML - 4, py);
         }
 
         ctx.fillStyle = 'rgba(100,150,160,0.45)'; ctx.font = 'bold 9px sans-serif';
