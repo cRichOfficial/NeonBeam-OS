@@ -234,7 +234,7 @@ export function generateMultiOpGCode(opts: MultiOpGCodeOptions): string {
             }
         } else {
             // Vector cut: sample path using getPointAtLength + getCTM
-            out.push('M3 ; constant laser mode');
+            out.push('M4 ; dynamic laser mode');
             out.push(`F${op.params.rate}`);
 
             for (let pass = 0; pass < op.params.passes; pass++) {
@@ -249,25 +249,50 @@ export function generateMultiOpGCode(opts: MultiOpGCodeOptions): string {
                         const steps = Math.max(16, Math.ceil(len / 0.25));
                         const ctm   = geom.getCTM();
 
-                        const pts: Pt[] = [];
-                        let prev: { x: number; y: number } | null = null;
+                        const stepSize = len / steps;
+                        const strokes: Pt[][] = [];
+                        let currentStroke: Pt[] = [];
+
                         for (let i = 0; i <= steps; i++) {
                             let p = geom.getPointAtLength((i / steps) * len);
-                            // Apply cumulative transform to get SVG-root user-unit coords
                             if (ctm) p = p.matrixTransform(ctm);
-                            // Skip near-duplicate points
-                            if (prev && Math.hypot(p.x - prev.x, p.y - prev.y) < 0.05) continue;
-                            pts.push(toMm(p.x, p.y));
-                            prev = p;
-                        }
+                            const mmPt = toMm(p.x, p.y);
 
-                        if (pts.length >= 2) {
-                            out.push(`G0 X${pts[0].x.toFixed(3)} Y${pts[0].y.toFixed(3)} S0`);
-                            out.push(`G1 S${op.params.power}`);
-                            for (let i = 1; i < pts.length; i++) {
+                            if (currentStroke.length > 0) {
+                                const prev = currentStroke[currentStroke.length - 1];
+                                const dist = Math.hypot(mmPt.x - prev.x, mmPt.y - prev.y);
+                                
+                                // In machine mm, the step length is approx stepSize * scale
+                                const expectedStepMm = stepSize * (widthMm / vbW);
+                                
+                                // If distance jumped is significantly larger than the length step, 
+                                // it's a move command (M) within the path.
+                                if (dist > expectedStepMm + 0.1) {
+                                    strokes.push(currentStroke);
+                                    currentStroke = [];
+                                }
+                            }
+
+                            // Skip near-duplicate points to reduce GCode bloat
+                            if (currentStroke.length > 0) {
+                                const prev = currentStroke[currentStroke.length - 1];
+                                if (Math.hypot(mmPt.x - prev.x, mmPt.y - prev.y) < 0.05) continue;
+                            }
+
+                            currentStroke.push(mmPt);
+                        }
+                        if (currentStroke.length > 0) strokes.push(currentStroke);
+
+                        // Generate GCode for each continuous stroke
+                        for (const pts of strokes) {
+                            if (pts.length < 2) continue;
+                            // Move to start of stroke
+                            out.push(`G0 X${pts[0].x.toFixed(3)} Y${pts[0].y.toFixed(3)}`);
+                            // Draw stroke (laser turns on with G1 in M4 mode)
+                            out.push(`G1 X${pts[1].x.toFixed(3)} Y${pts[1].y.toFixed(3)} S${op.params.power}`);
+                            for (let i = 2; i < pts.length; i++) {
                                 out.push(`G1 X${pts[i].x.toFixed(3)} Y${pts[i].y.toFixed(3)}`);
                             }
-                            out.push('G1 S0');
                         }
                     } catch { /* skip unsupported element */ }
                 }

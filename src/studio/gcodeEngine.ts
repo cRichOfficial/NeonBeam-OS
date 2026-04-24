@@ -67,15 +67,33 @@ function extractSvgPaths(
                 if (len <= 0) continue;
                 // ~1 sample per 0.25 mm equivalent for smooth curves
                 const steps = Math.max(16, Math.ceil(len / 0.25));
-                const pts: Pt[] = [];
-                let prev: DOMPoint | null = null;
+                const stepSize = len / steps;
+                let currentStroke: Pt[] = [];
+
                 for (let i = 0; i <= steps; i++) {
                     const p = el.getPointAtLength((i / steps) * len);
-                    if (prev && Math.hypot(p.x - prev.x, p.y - prev.y) < 0.05) continue;
-                    pts.push(toMm(p.x, p.y));
-                    prev = p;
+                    const mmPt = toMm(p.x, p.y);
+
+                    if (currentStroke.length > 0) {
+                        const prevMm = currentStroke[currentStroke.length - 1];
+                        const dist = Math.hypot(mmPt.x - prevMm.x, mmPt.y - prevMm.y);
+                        
+                        // Scale expected step to mm
+                        const expectedStepMm = stepSize * (widthMm / vbW);
+
+                        if (dist > expectedStepMm + 0.1) {
+                            if (currentStroke.length >= 2) result.push(currentStroke);
+                            currentStroke = [];
+                        }
+                    }
+
+                    if (currentStroke.length > 0) {
+                        const last = currentStroke[currentStroke.length - 1];
+                        if (Math.hypot(mmPt.x - last.x, mmPt.y - last.y) < 0.05) continue;
+                    }
+                    currentStroke.push(mmPt);
                 }
-                if (pts.length >= 2) result.push(pts);
+                if (currentStroke.length >= 2) result.push(currentStroke);
             } catch { /* skip unsupported elements */ }
         }
     } finally {
@@ -119,17 +137,16 @@ export function generateSvgGCode(opts: SvgGCodeOptions): string {
         }
     } else {
         // Vector cut (on-path / inside / outside)
-        out.push('M3 ; constant laser'); out.push(`F${params.rate}`);
+        out.push('M4 ; dynamic laser'); out.push(`F${params.rate}`);
         for (let pass = 0; pass < params.passes; pass++) {
             if (params.passes > 1) out.push(`; --- Pass ${pass + 1} / ${params.passes} ---`);
             for (const path of paths) {
                 if (path.length < 2) continue;
-                out.push(`G0 X${path[0].x.toFixed(3)} Y${path[0].y.toFixed(3)} S0`);
-                out.push(`G1 S${params.power}`);
-                for (let i = 1; i < path.length; i++) {
+                out.push(`G0 X${path[0].x.toFixed(3)} Y${path[0].y.toFixed(3)}`);
+                out.push(`G1 X${path[1].x.toFixed(3)} Y${path[1].y.toFixed(3)} S${params.power}`);
+                for (let i = 2; i < path.length; i++) {
                     out.push(`G1 X${path[i].x.toFixed(3)} Y${path[i].y.toFixed(3)}`);
                 }
-                out.push('G1 S0');
             }
         }
     }
