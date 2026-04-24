@@ -43,45 +43,40 @@ function App() {
     // We must NOT hardcode ws://localhost here — from a phone on Wi-Fi, localhost
     // is the phone's own loopback and the connection will never succeed.
     const coreApiUrl = useAppSettingsStore(s => s.settings.coreApiUrl);
-    const [wsUrl, setWsUrl] = React.useState<string>('');
+    const [isHydrated, setIsHydrated] = React.useState(false);
 
     React.useEffect(() => {
-        const base = coreApiUrl;
-        
-        let active = true;
-        
-        const testAndConnect = async () => {
-            if (!base || !active) return;
-
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 3000);
-            
-            try {
-                const normalizedBase = base.includes('://') ? base : `http://${base}`;
-                const res = await fetch(`${normalizedBase}/api/health`, { signal: controller.signal });
-                clearTimeout(timeoutId);
-                
-                if (res.ok && active) {
-                    const wsBase = normalizedBase.replace(/^http/, 'ws');
-                    setWsUrl(`${wsBase}/ws/telemetry`);
-                    return; // Success!
-                }
-            } catch (err) {
-                clearTimeout(timeoutId);
-            }
-
-            // If we failed or weren't OK, retry in 5s if still active
-            if (active) {
-                setTimeout(testAndConnect, 5000);
+        // Hydration check for PWA stability — ensures coreApiUrl is picked up
+        // if it rehydrates after the initial App mount.
+        const check = () => {
+            if (useAppSettingsStore.persist.hasHydrated()) {
+                setIsHydrated(true);
             }
         };
+        check();
+        return useAppSettingsStore.persist.onFinishHydration(() => setIsHydrated(true));
+    }, []);
 
-        if (base) {
-            testAndConnect();
+    const wsUrl = React.useMemo(() => {
+        let url = coreApiUrl;
+        
+        // FAIL-SAFE: If the reactive store hasn't hydrated yet (common in PWAs),
+        // we pull directly from localStorage to start the connection attempt
+        // without waiting for the next render cycle.
+        if (!url) {
+            try {
+                const raw = localStorage.getItem('neonbeam-app-settings');
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    url = parsed.state?.settings?.coreApiUrl;
+                }
+            } catch (e) { /* ignore parse errors */ }
         }
 
-        return () => { active = false; };
-    }, [coreApiUrl]);
+        if (!url) return '';
+        const normalizedBase = url.includes('://') ? url : `http://${url}`;
+        return normalizedBase.replace(/^http/, 'ws') + '/ws/telemetry';
+    }, [coreApiUrl, isHydrated]);
 
     useTelemetry(wsUrl);
 

@@ -27,11 +27,18 @@ export const useTelemetry = (wsUrl: string) => {
     useEffect(() => {
         if (!wsUrl) return;
         let reconnectTimeout: ReturnType<typeof setTimeout>;
-        let dead = false;   // true after component unmounts — stops reconnect loop
+        let healthInterval: ReturnType<typeof setInterval>;
+        let dead = false;
 
         const connect = () => {
-            if (dead) return;
+            if (dead || (wsRef.current && wsRef.current.readyState === WebSocket.OPEN)) return;
+            
+            // Close existing if any (cleanup)
+            if (wsRef.current) {
+                try { wsRef.current.close(); } catch {}
+            }
 
+            console.log('[NeonBeam] Attempting telemetry connection:', wsUrl);
             const ws = new WebSocket(wsUrl);
             wsRef.current = ws;
 
@@ -44,36 +51,67 @@ export const useTelemetry = (wsUrl: string) => {
                 try {
                     const data = JSON.parse(event.data);
                     updateStatusRaw(data);
-                } catch {
-                    // Ignore malformed frames
-                }
+                } catch {}
             };
 
-            ws.onerror = (err) => {
-                // onerror always fires before onclose — log only, don't mutate state here
-                console.warn('[NeonBeam] Telemetry WS error', err);
-            };
+            ws.onerror = () => {};
 
             ws.onclose = () => {
                 setConnected(false);
-
-                // Show "Connecting" — NOT "Offline".
-                // The serial connection and any running job on the backend are
-                // completely unaffected by this WS drop. We'll get fresh machine
-                // state as soon as the WS reconnects.
                 updateTelemetry({ state: 'Connecting' });
-
                 if (!dead) {
-                    reconnectTimeout = setTimeout(connect, 3000);
+                    clearTimeout(reconnectTimeout);
+                    reconnectTimeout = setTimeout(connect, 4000);
                 }
             };
         };
 
+        // ── Aggressive PWA Recovery Logic ─────────────────────────────────────
+        
+        // 1. User Gesture Trigger: Many mobile browsers restrict autonomously 
+        //    opened WebSockets in PWAs. We force a poke on the first touch/click.
+        const poke = () => {
+            console.log('[NeonBeam] User gesture detected, poking connection...');
+            connect();
+        };
+        window.addEventListener('pointerdown', poke, { once: true });
+        window.addEventListener('touchstart',  poke, { once: true });
+
+        // 2. Visibility Trigger: Reconnect immediately when app is resumed
+        const handleVisibility = () => {
+            if (document.visibilityState === 'visible') {
+                console.log('[NeonBeam] App visible, forcing sync...');
+                connect();
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibility);
+
+        // 3. Active Health Probe: Periodically check if the backend is reachable via HTTP.
+        //    If HTTP works but WS is down, the WS constructor might be blocked or 
+        //    failing silently; we force a retry.
+        healthInterval = setInterval(async () => {
+            if (dead || (wsRef.current && wsRef.current.readyState === WebSocket.OPEN)) return;
+            
+            try {
+                const httpUrl = wsUrl.replace(/^ws/, 'http').replace(/\/ws\/telemetry$/, '/api/health');
+                const res = await fetch(httpUrl, { signal: AbortSignal.timeout(2000) });
+                if (res.ok) {
+                    console.log('[NeonBeam] Health probe OK, but WS is down. Retrying...');
+                    connect();
+                }
+            } catch {}
+        }, 6000);
+
+        // Initial attempt
         connect();
 
         return () => {
             dead = true;
+            window.removeEventListener('pointerdown', poke);
+            window.removeEventListener('touchstart',  poke);
+            document.removeEventListener('visibilitychange', handleVisibility);
             clearTimeout(reconnectTimeout);
+            clearInterval(healthInterval);
             wsRef.current?.close();
         };
     }, [wsUrl, updateStatusRaw, updateTelemetry, setConnected]);

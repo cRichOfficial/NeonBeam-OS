@@ -122,28 +122,44 @@ export const DashboardModule: React.FC = () => {
     const [jogError,       setJogError]       = useState<string | null>(null);
     const [showOverflow,   setShowOverflow]   = useState(false);
 
-    // ── On mount: sync live-jog toggle and recover any in-progress job ──────
+    // ── On mount & resume: sync settings and recover any in-progress job ──────
     useEffect(() => {
-        // Recover live-jog setting
-        axios.get(`${coreApiUrl}/api/jog/settings`)
-            .then(r => setLiveJogEnabled(r.data.live_jog_enabled))
-            .catch(() => {});
+        const recover = () => {
+            if (!coreApiUrl) return;
+            // Recover live-jog setting
+            axios.get(`${coreApiUrl}/api/jog/settings`)
+                .then(r => setLiveJogEnabled(r.data.live_jog_enabled))
+                .catch(() => {});
 
-        // Recover job status — restores progress display after browser refresh
-        axios.get(`${coreApiUrl}/api/gcode/status`)
-            .then(r => {
-                const d = r.data;
-                if (d.is_streaming || d.is_queued || d.job_name) {
-                    setJobStatus({
-                        is_streaming: d.is_streaming,
-                        is_queued:    d.is_queued ?? false,
-                        job_name:     d.job_name,
-                        total_lines:  d.total_lines,
-                        lines_sent:   d.lines_sent,
-                    });
-                }
-            })
-            .catch(() => {});
+            // Recover job status — restores progress display after browser refresh or PWA resume
+            axios.get(`${coreApiUrl}/api/gcode/status`)
+                .then(r => {
+                    const d = r.data;
+                    if (d.is_streaming || d.is_queued || d.job_name) {
+                        setJobStatus({
+                            is_streaming: d.is_streaming,
+                            is_queued:    d.is_queued ?? false,
+                            job_name:     d.job_name,
+                            total_lines:  d.total_lines,
+                            lines_sent:   d.lines_sent,
+                            feed_rate_mm_min: d.feed_rate_mm_min,
+                        });
+                    }
+                })
+                .catch(() => {});
+        };
+
+        const handleVisibility = () => {
+            if (document.visibilityState === 'visible') {
+                console.log('[NeonBeam] Dashboard resumed, refreshing status...');
+                recover();
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibility);
+        recover();
+
+        return () => document.removeEventListener('visibilitychange', handleVisibility);
     }, [coreApiUrl, setJobStatus]);
 
     const toggleLiveJog = useCallback(async () => {
