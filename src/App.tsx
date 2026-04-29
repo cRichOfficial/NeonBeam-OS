@@ -112,10 +112,10 @@ function App() {
                     Using visibility + pointer-events rather than `display:none`
                     so the home grid stays in the DOM and snaps back instantly. */}
                 <div className={`absolute inset-0 transition-opacity duration-150 ${
-                    activeModuleId ? 'opacity-0 pointer-events-none' : 'opacity-100'
+                    activeModuleId ? 'opacity-0 pointer-events-none' : 'opacity-100 overflow-y-auto'
                 }`}>
-                    <div className="p-6 h-full flex flex-col">
-                        <div className="mb-10 pt-8 text-center">
+                    <div className="p-6 min-h-full flex flex-col">
+                        <div className="mb-10 pt-8 text-center flex-shrink-0">
                             <h1 className="text-4xl font-black tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-miami-cyan to-miami-pink mb-2">
                                 NEONBEAM OS
                             </h1>
