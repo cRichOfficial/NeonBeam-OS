@@ -324,16 +324,18 @@ export const LensModule: React.FC = () => {
     return (
         <div className="flex flex-col bg-black/10 text-white p-4">
             {/* Header */}
-            <div className="flex justify-between items-center mb-4 flex-shrink-0">
+            <div className="flex flex-col gap-3 mb-6 flex-shrink-0">
                 <div>
-                    <h2 className="text-2xl font-black text-miami-cyan tracking-tight">NeonBeam Lens</h2>
-                    <p className="text-xs text-gray-500 font-mono">Vision-Aided Alignment System</p>
+                    <h2 className="text-3xl font-black text-miami-cyan tracking-tight leading-none mb-1">NeonBeam Lens</h2>
+                    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest opacity-80">Vision-Aided Alignment System</p>
                 </div>
-                <div className="flex gap-2 bg-black/40 p-1 rounded-xl border border-gray-800">
+                <div className="flex bg-black/60 p-1 rounded-xl border border-gray-800 self-start">
                     {(['align', 'calibrate', 'tags'] as LensTab[]).map(tab => (
                         <button key={tab} onClick={() => setActiveTab(tab)}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all uppercase ${
-                                activeTab === tab ? 'bg-miami-cyan text-black' : 'text-gray-500 hover:text-gray-300'
+                            className={`px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-wider ${
+                                activeTab === tab 
+                                    ? 'bg-miami-cyan text-black shadow-[0_0_12px_rgba(0,240,255,0.3)]' 
+                                    : 'text-gray-500 hover:text-gray-300'
                             }`}>
                             {tab}
                         </button>
