@@ -61,9 +61,15 @@ export const LensModule: React.FC = () => {
         setIsDetecting(true);
         try {
             const results = await lensService.detectObjects();
-            setDetections(results);
+            if (Array.isArray(results)) {
+                setDetections(results);
+            } else {
+                console.error('Detection API returned non-array:', results);
+                setDetections([]);
+            }
         } catch (err) {
             console.error('Detection failed', err);
+            setDetections([]);
         } finally {
             setIsDetecting(false);
         }
@@ -280,7 +286,7 @@ export const LensModule: React.FC = () => {
         ctx.beginPath(); ctx.moveTo(ML, plotH - 6); ctx.lineTo(ML, plotH); ctx.moveTo(ML, plotH); ctx.lineTo(ML + 6, plotH); ctx.stroke();
 
         // 6. Detections (Align Tab)
-        if (activeTab === 'align') {
+        if (activeTab === 'align' && Array.isArray(detections)) {
             detections.forEach(d => {
                 const isSelected = d.workpiece_id === selectedWorkpieceId;
                 ctx.strokeStyle = isSelected ? '#00f0ff' : 'rgba(0,240,255,0.4)';
@@ -307,7 +313,7 @@ export const LensModule: React.FC = () => {
         }
 
         // 7. Calibration Points (Calibrate Tab)
-        if (activeTab === 'calibrate') {
+        if (activeTab === 'calibrate' && Array.isArray(calibrationPoints)) {
             calibrationPoints.forEach(p => {
                 const px = ML + p.physical_x * scX;
                 const py = plotH - p.physical_y * scY;
