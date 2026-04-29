@@ -160,13 +160,16 @@ export const LensModule: React.FC = () => {
         }
     };
 
-    const addCalibrationPoint = (id: number, x: number, y: number, anchor: string = 'center') => {
+    const addCalibrationPoint = (id: number, x: number, y: number, anchor: string = 'center', sizeMm?: number) => {
         setCalibrationPoints(prev => {
             const existing = prev.find(p => p.id === id);
             if (existing) {
-                return prev.map(p => p.id === id ? { ...p, physical_x: x, physical_y: y, anchor } : p);
+                return prev.map(p => p.id === id 
+                    ? { ...p, physical_x: x, physical_y: y, anchor, size_mm: sizeMm ?? p.size_mm ?? tagSize } 
+                    : p
+                );
             }
-            return [...prev, { id, physical_x: x, physical_y: y, size_mm: tagSize, anchor }];
+            return [...prev, { id, physical_x: x, physical_y: y, size_mm: sizeMm ?? tagSize, anchor }];
         });
     };
 
@@ -394,7 +397,7 @@ export const LensModule: React.FC = () => {
                                     
                                     const AnchorDot = ({ pos, label }: { pos: string, label: string }) => (
                                         <button 
-                                            onClick={() => addCalibrationPoint(i, p?.physical_x ?? 0, p?.physical_y ?? 0, pos)}
+                                            onClick={() => addCalibrationPoint(i, p?.physical_x ?? 0, p?.physical_y ?? 0, pos, p?.size_mm ?? tagSize)}
                                             className={`absolute w-8 h-8 flex items-center justify-center transition-all z-20`}
                                             style={{
                                                 top: pos.includes('top') ? '-16px' : pos.includes('bottom') ? 'auto' : '50%',
@@ -440,13 +443,13 @@ export const LensModule: React.FC = () => {
                                                 Anchor: <span className="text-miami-cyan">{anchor}</span>
                                             </div>
 
-                                            {/* Coordinate Inputs */}
+                                            {/* Coordinate + Size Inputs */}
                                             <div className="flex flex-col gap-2">
                                                 <div className="relative">
                                                     <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[9px] text-gray-600 font-bold">X</span>
                                                     <NumericInput 
                                                         value={p?.physical_x ?? 0} 
-                                                        onChange={v => addCalibrationPoint(i, v, p?.physical_y ?? 0, anchor)} 
+                                                        onChange={v => addCalibrationPoint(i, v, p?.physical_y ?? 0, anchor, p?.size_mm ?? tagSize)} 
                                                         className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-xl p-2 pl-6 text-xs font-mono transition-colors" 
                                                     />
                                                 </div>
@@ -454,9 +457,19 @@ export const LensModule: React.FC = () => {
                                                     <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[9px] text-gray-600 font-bold">Y</span>
                                                     <NumericInput 
                                                         value={p?.physical_y ?? 0} 
-                                                        onChange={v => addCalibrationPoint(i, p?.physical_x ?? 0, v, anchor)} 
+                                                        onChange={v => addCalibrationPoint(i, p?.physical_x ?? 0, v, anchor, p?.size_mm ?? tagSize)} 
                                                         className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-xl p-2 pl-6 text-xs font-mono transition-colors" 
                                                     />
+                                                </div>
+                                                <div className="relative">
+                                                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[9px] text-miami-cyan/70 font-bold">⬛</span>
+                                                    <NumericInput 
+                                                        value={p?.size_mm ?? tagSize} 
+                                                        onChange={v => addCalibrationPoint(i, p?.physical_x ?? 0, p?.physical_y ?? 0, anchor, v)}
+                                                        min={5}
+                                                        className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-xl p-2 pl-6 text-xs font-mono transition-colors" 
+                                                    />
+                                                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[8px] text-gray-600 font-bold">mm</span>
                                                 </div>
                                             </div>
                                         </div>

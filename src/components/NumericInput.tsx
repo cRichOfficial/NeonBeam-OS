@@ -53,24 +53,32 @@ export const NumericInput: React.FC<NumericInputProps> = ({
         
         const num = parseFloat(str);
         if (!isNaN(num)) {
-            // Respect min/max if provided
-            let final = num;
-            if (min !== undefined && final < min) final = min;
-            if (max !== undefined && final > max) final = max;
-            
-            // Only fire onChange if it's a legitimate number change
-            if (final !== value) {
-                onChange(final);
+            // Pass the raw value to the parent while typing — do NOT clamp here.
+            // Clamping on every keystroke causes mid-type values (e.g. typing "2"
+            // towards "20") to be snapped to min, which then triggers the useEffect
+            // sync and overwrites tempValue, corrupting the user's input.
+            if (num !== value) {
+                onChange(num);
             }
         }
     };
 
     const handleBlur = () => {
-        // When focus is lost, if we have an incomplete string, revert to the actual store value
+        // On blur: clamp to min/max and canonicalize the displayed string
         if (tempValue === '' || tempValue === '-' || tempValue === '.') {
             setTempValue(value.toString());
+            return;
+        }
+
+        const num = parseFloat(tempValue);
+        if (!isNaN(num)) {
+            let final = num;
+            if (min !== undefined && final < min) final = min;
+            if (max !== undefined && final > max) final = max;
+            // Fire onChange with clamped value if it changed
+            if (final !== value) onChange(final);
+            setTempValue(final.toString());
         } else {
-            // Canonicalize the displayed string (e.g. "05" -> "5")
             setTempValue(value.toString());
         }
     };
