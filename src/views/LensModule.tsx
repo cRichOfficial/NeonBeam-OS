@@ -322,9 +322,9 @@ export const LensModule: React.FC = () => {
     }, [detections, selectedWorkpieceId, mmW, mmH, scX, scY, plotW, plotH, major, minor, activeTab, calibrationPoints, renderTick]);
 
     return (
-        <div className="flex flex-col h-full bg-black/10 text-white p-4">
+        <div className="flex flex-col bg-black/10 text-white p-4">
             {/* Header */}
-            <div className="flex justify-between items-center mb-4">
+            <div className="flex justify-between items-center mb-4 flex-shrink-0">
                 <div>
                     <h2 className="text-2xl font-black text-miami-cyan tracking-tight">NeonBeam Lens</h2>
                     <p className="text-xs text-gray-500 font-mono">Vision-Aided Alignment System</p>
@@ -341,15 +341,15 @@ export const LensModule: React.FC = () => {
                 </div>
             </div>
 
-            <div className="flex flex-col gap-4 overflow-y-auto">
+            <div className="flex flex-col gap-4">
                 {/* ── ALIGN TAB ── */}
                 {activeTab === 'align' && (
                     <>
-                        <div className="relative aspect-video bg-black rounded-2xl overflow-hidden border border-gray-800 shadow-2xl">
+                        <div className="relative min-h-[200px] bg-black rounded-2xl overflow-hidden border border-gray-800 shadow-2xl">
                             {isStreaming && lensApiUrl ? (
-                                <img src={streamUrl} alt="Lens Stream" className="w-full h-full object-contain" onError={() => setIsStreaming(false)} />
+                                <img src={streamUrl} alt="Lens Stream" className="w-full h-auto block" onError={() => setIsStreaming(false)} />
                             ) : (
-                                <div className="w-full h-full flex flex-col items-center justify-center text-gray-600 gap-2">
+                                <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-600 gap-2">
                                     <span className="text-4xl">📷</span>
                                     <span className="text-sm font-bold uppercase tracking-widest">Stream Unavailable</span>
                                 </div>
@@ -370,8 +370,8 @@ export const LensModule: React.FC = () => {
                                     {isDetecting ? 'Detecting...' : '↻ Refresh Objects'}
                                 </button>
                             </div>
-                            <div className="bg-black/40 rounded-2xl border border-gray-800 p-2 flex items-center justify-center shadow-inner">
-                                <canvas ref={canvasRef} width={CW} height={CH} onClick={handleCanvasClick} className="cursor-crosshair rounded-lg" />
+                            <div className="bg-black/40 rounded-2xl border border-gray-800 p-2 flex items-center justify-center shadow-inner overflow-hidden">
+                                <canvas ref={canvasRef} width={CW} height={CH} onClick={handleCanvasClick} className="cursor-crosshair rounded-lg max-w-full h-auto" />
                             </div>
                         </div>
 
@@ -415,8 +415,8 @@ export const LensModule: React.FC = () => {
                             </p>
                         </div>
 
-                        <div className="bg-black/40 rounded-2xl border border-gray-800 p-2 flex items-center justify-center">
-                            <canvas ref={canvasRef} width={CW} height={CH} className="rounded-lg" />
+                        <div className="bg-black/40 rounded-2xl border border-gray-800 p-2 flex items-center justify-center shadow-inner overflow-hidden">
+                            <canvas ref={canvasRef} width={CW} height={CH} className="rounded-lg max-w-full h-auto" />
                         </div>
 
                         <div className="bg-black/40 border border-gray-800 rounded-2xl p-4 space-y-4">
@@ -425,7 +425,7 @@ export const LensModule: React.FC = () => {
                                 <button onClick={() => setCalibrationPoints([])} className="text-[10px] text-red-400 hover:underline">Clear All</button>
                             </div>
                             
-                            <div className="grid grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto pr-2 pb-4">
+                            <div className="grid grid-cols-2 gap-3 pb-4">
                                 {[0, 1, 2, 3].map(i => {
                                     const p = calibrationPoints.find(cp => cp.id === i);
                                     const anchor = p?.anchor || 'center';
