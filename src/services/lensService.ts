@@ -69,17 +69,18 @@ class LensService {
         return `${this.baseUrl}/api/apriltag/generate/${tagId}?size_mm=${sizeMm}&dpi=${dpi}`;
     }
 
-    async generateTag(tagId: number, sizeMm: number = 50, dpi: number = 300): Promise<Blob> {
+    async generateTag(tagId: number, sizeMm: number = 50, dpi: number = 300, paperWidthIn: number = 8.5, paperHeightIn: number = 11.0): Promise<Blob> {
         const res = await axios.get(`${this.baseUrl}/api/apriltag/generate/${tagId}`, {
-            params: { size_mm: sizeMm, dpi },
+            params: { size_mm: sizeMm, dpi, paper_width_in: paperWidthIn, paper_height_in: paperHeightIn },
             responseType: 'blob'
         });
         return res.data;
     }
 
-    async batchGenerateTags(startId: number = 0, count: number = 4, sizeMm: number = 50, dpi: number = 300) {
+    async batchGenerateTags(startId: number = 0, count: number = 4, sizeMm: number = 50, dpi: number = 300, paperWidthIn: number = 8.5, paperHeightIn: number = 11.0): Promise<Blob> {
         const res = await axios.get(`${this.baseUrl}/api/apriltag/batch`, {
-            params: { start_id: startId, count, size_mm: sizeMm, dpi }
+            params: { start_id: startId, count, size_mm: sizeMm, dpi, paper_width_in: paperWidthIn, paper_height_in: paperHeightIn },
+            responseType: 'blob'
         });
         return res.data;
     }

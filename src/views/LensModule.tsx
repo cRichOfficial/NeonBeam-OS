@@ -39,8 +39,8 @@ export const LensModule: React.FC = () => {
     const [tagId, setTagId] = useState(0);
     const [tagSize, setTagSize] = useState(50);
     const [tagDpi, setTagDpi] = useState(300);
-    const [generatedTag, setGeneratedTag] = useState<{ url: string; tag_id: number; size_mm: number } | null>(null);
-    const [isGeneratingTag, setIsGeneratingTag] = useState(false);
+    const [isBatch, setIsBatch] = useState(false);
+    const [paperFormat, setPaperFormat] = useState<'letter' | 'a4'>('letter');
 
     // ── Canvas Refs ──
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -142,52 +142,6 @@ export const LensModule: React.FC = () => {
             setIsTransforming(false);
         }
     };
-
-    const [isBatch, setIsBatch] = useState(false);
-    const [batchTags, setBatchTags] = useState<{ url: string; tag_id: number; size_mm: number }[]>([]);
-
-    const generateTag = async () => {
-        setIsGeneratingTag(true);
-        try {
-            // Cleanup existing URLs safely
-            if (generatedTag?.url?.startsWith('blob:')) URL.revokeObjectURL(generatedTag.url);
-            if (Array.isArray(batchTags)) {
-                batchTags.forEach(t => {
-                    if (t.url?.startsWith('blob:')) URL.revokeObjectURL(t.url);
-                });
-            }
-            setBatchTags([]);
-            setGeneratedTag(null);
-
-            if (isBatch) {
-                // Reverting to server-side batch generation as requested
-                const results = await lensService.batchGenerateTags(0, 4, tagSize, tagDpi);
-                // Assume the results are objects with URLs that can be used directly
-                setBatchTags(results);
-            } else {
-                const blob = await lensService.generateTag(tagId, tagSize, tagDpi);
-                const url = URL.createObjectURL(blob);
-                setGeneratedTag({ url, tag_id: tagId, size_mm: tagSize });
-            }
-        } catch (err) {
-            console.error('Tag generation failed', err);
-            alert('Failed to generate tag(s). Check Lens API connection.');
-        } finally {
-            setIsGeneratingTag(false);
-        }
-    };
-
-    // Effect to cleanup Blob URL on unmount
-    useEffect(() => {
-        return () => {
-            if (generatedTag?.url?.startsWith('blob:')) URL.revokeObjectURL(generatedTag.url);
-            if (Array.isArray(batchTags)) {
-                batchTags.forEach(t => {
-                    if (t.url?.startsWith('blob:')) URL.revokeObjectURL(t.url);
-                });
-            }
-        };
-    }, [generatedTag, batchTags]);
 
     const submitCalibration = async () => {
         if (calibrationPoints.length < 4) {
@@ -525,85 +479,45 @@ export const LensModule: React.FC = () => {
                             <div className="flex items-center justify-between">
                                 <h3 className="text-sm font-black text-miami-pink uppercase">AprilTag Generator</h3>
                                 <div className="flex bg-black/60 p-1 rounded-lg border border-gray-700">
-                                    <button onClick={() => setIsBatch(false)} className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-all ${!isBatch ? 'bg-miami-pink text-black' : 'text-gray-500'}`}>Single</button>
-                                    <button onClick={() => setIsBatch(true)} className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-all ${isBatch ? 'bg-miami-pink text-black' : 'text-gray-500'}`}>Full Set</button>
+                                    <button onClick={() => setIsBatch(false)} className={`px-3 py-1.5 rounded text-[10px] font-bold uppercase transition-all ${!isBatch ? 'bg-miami-pink text-black' : 'text-gray-500'}`}>Single</button>
+                                    <button onClick={() => setIsBatch(true)} className={`px-3 py-1.5 rounded text-[10px] font-bold uppercase transition-all ${isBatch ? 'bg-miami-pink text-black' : 'text-gray-500'}`}>Full Set</button>
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-3 gap-3">
                                 <div className={isBatch ? 'opacity-30 pointer-events-none' : ''}>
                                     <label className="text-[9px] text-gray-500 uppercase font-bold block mb-1">Tag ID (0-3)</label>
-                                    <NumericInput value={tagId} onChange={v => setTagId(Math.min(3, Math.max(0, v)))} min={0} max={3} className="w-full bg-black border border-gray-700 rounded-lg p-2 text-sm font-mono" />
+                                    <NumericInput value={tagId} onChange={v => setTagId(Math.min(3, Math.max(0, v)))} min={0} max={3} className="w-full bg-black border border-gray-700 rounded-lg p-2.5 text-xs font-mono" />
                                 </div>
                                 <div>
                                     <label className="text-[9px] text-gray-500 uppercase font-bold block mb-1">Size (mm)</label>
-                                    <NumericInput value={tagSize} onChange={setTagSize} min={10} className="w-full bg-black border border-gray-700 rounded-lg p-2 text-sm font-mono" />
+                                    <NumericInput value={tagSize} onChange={setTagSize} min={10} className="w-full bg-black border border-gray-700 rounded-lg p-2.5 text-xs font-mono" />
+                                </div>
+                                <div>
+                                    <label className="text-[9px] text-gray-500 uppercase font-bold block mb-1">Paper Size</label>
+                                    <select 
+                                        value={paperFormat} 
+                                        onChange={e => setPaperFormat(e.target.value as 'letter' | 'a4')}
+                                        className="w-full bg-black border border-gray-700 rounded-lg p-2.5 text-xs font-mono text-white focus:border-miami-cyan outline-none"
+                                    >
+                                        <option value="letter">Letter</option>
+                                        <option value="a4">A4</option>
+                                    </select>
                                 </div>
                             </div>
-                            <button onClick={generateTag} disabled={isGeneratingTag}
-                                className="w-full py-3 bg-miami-pink text-black font-black rounded-xl shadow-lg shadow-miami-pink/20">
-                                {isGeneratingTag ? 'GENERATING...' : isBatch ? 'GENERATE FULL SET (0-3)' : 'GENERATE SINGLE TAG'}
-                            </button>
+
+                            <a 
+                                href={isBatch 
+                                    ? `${lensApiUrl}/api/apriltag/batch?start_id=0&count=4&size_mm=${tagSize}&dpi=${tagDpi}&paper_width_in=${paperFormat === 'letter' ? 8.5 : 8.27}&paper_height_in=${paperFormat === 'letter' ? 11.0 : 11.69}`
+                                    : `${lensApiUrl}/api/apriltag/generate/${tagId}?size_mm=${tagSize}&dpi=${tagDpi}&paper_width_in=${paperFormat === 'letter' ? 8.5 : 8.27}&paper_height_in=${paperFormat === 'letter' ? 11.0 : 11.69}`
+                                }
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="w-full py-3 bg-miami-pink text-black font-black rounded-xl shadow-lg shadow-miami-pink/20 text-center block uppercase tracking-widest text-[11px]"
+                            >
+                                🖨 DOWNLOAD {isBatch ? 'FULL SET' : 'SINGLE TAG'} PDF
+                            </a>
                         </div>
-
-                        {generatedTag && (
-                            <div className="bg-white p-4 rounded-2xl flex flex-col items-center gap-4 animate-in zoom-in duration-300">
-                                <img src={generatedTag.url} alt="Generated Tag" className="w-48 h-48 pixelated" style={{ imageRendering: 'pixelated' }} />
-                                <div className="flex flex-col items-center">
-                                    <span className="text-[10px] text-gray-400 font-bold uppercase">Ready to Print</span>
-                                    <span className="text-sm text-black font-black">ID {generatedTag.tag_id} · {generatedTag.size_mm}mm</span>
-                                </div>
-                                <a href={generatedTag.url} download={`apriltag-${generatedTag.tag_id}.png`}
-                                    className="w-full text-center py-2 bg-black text-white font-black rounded-lg text-xs no-print">
-                                    DOWNLOAD PNG
-                                </a>
-                            </div>
-                        )}
-
-                        {batchTags.length > 0 && (
-                            <div className="space-y-4 print-area">
-                                <style>{`
-                                    @media print {
-                                        body * { visibility: hidden; }
-                                        .print-area, .print-area * { visibility: visible; }
-                                        .print-area { 
-                                            position: absolute; left: 0; top: 0; width: 100%; 
-                                            display: flex; flex-wrap: wrap; gap: 40px; padding: 20px; 
-                                        }
-                                        .no-print { display: none !important; }
-                                        .print-tag-img { 
-                                            width: ${tagSize}mm !important; 
-                                            height: ${tagSize}mm !important; 
-                                            image-rendering: pixelated;
-                                            border: 1px solid #eee;
-                                        }
-                                    }
-                                `}</style>
-                                <div className="grid grid-cols-2 gap-3 no-print">
-                                    {batchTags.map(tag => (
-                                        <div key={tag.tag_id} className="bg-white p-3 rounded-xl flex flex-col items-center gap-2">
-                                            <img src={tag.url} alt={`Tag ${tag.tag_id}`} className="w-24 h-24 pixelated" style={{ imageRendering: 'pixelated' }} />
-                                            <span className="text-[10px] text-black font-black">ID {tag.tag_id} · {tag.size_mm}mm</span>
-                                            <a href={tag.url} download={`apriltag-${tag.tag_id}.png`} className="text-[9px] bg-black text-white px-2 py-1 rounded font-bold">DL PNG</a>
-                                        </div>
-                                    ))}
-                                </div>
-                                
-                                {/* Hidden container for clean printing */}
-                                <div className="hidden">
-                                    {batchTags.map(tag => (
-                                        <div key={tag.tag_id} className="flex flex-col items-center">
-                                            <img src={tag.url} alt={`Tag ${tag.tag_id}`} className="print-tag-img" />
-                                            <span className="text-[8px] text-black mt-1">ID {tag.tag_id} · {tag.size_mm}mm</span>
-                                        </div>
-                                    ))}
-                                </div>
-
-                                <button onClick={() => window.print()} className="w-full py-2 bg-miami-cyan text-black font-black rounded-xl text-xs uppercase tracking-widest no-print">
-                                    🖨 Print All Tags
-                                </button>
-                            </div>
-                        )}
                     </div>
                 )}
             </div>
