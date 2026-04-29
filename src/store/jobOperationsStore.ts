@@ -28,8 +28,21 @@ interface JobOperationsState {
     /** Currently checked paths in the path panel (multi-select) */
     selectedPathIds: string[];
 
+    /** Raw design data (SVG XML or Bitmap Blob/URL) */
+    designSource: string | null;
+    designType:   'svg' | 'bitmap' | null;
+    designName:   string;
+
+    /** Design placement in machine coordinates (mm) */
+    posX:     number;
+    posY:     number;
+    scalePct: number;
+    rotation: number; // degrees
+
     // ── Mutators ──
     setSvgPaths:      (paths: SvgPathInfo[]) => void;
+    setDesign:        (type: 'svg' | 'bitmap', source: string, name: string) => void;
+    setPlacement:     (patch: Partial<{ posX: number, posY: number, scalePct: number, rotation: number }>) => void;
     setSelectedPaths: (ids: string[]) => void;
     togglePathSelect: (id: string) => void;
 
@@ -56,8 +69,27 @@ export const useJobOperationsStore = create<JobOperationsState>((set, get) => ({
     svgPaths:        [],
     operations:      [],
     selectedPathIds: [],
+    designSource:    null,
+    designType:      null,
+    designName:      '',
+    posX:            0,
+    posY:            0,
+    scalePct:        100,
+    rotation:        0,
 
     setSvgPaths: (paths) => set({ svgPaths: paths, selectedPathIds: [] }),
+
+    setDesign: (type, source, name) => set({ 
+        designType: type, 
+        designSource: source, 
+        designName: name,
+        posX: 0,
+        posY: 0,
+        scalePct: 100,
+        rotation: 0
+    }),
+
+    setPlacement: (patch) => set(s => ({ ...patch })),
 
     setSelectedPaths: (ids) => set({ selectedPathIds: ids }),
 
@@ -120,5 +152,16 @@ export const useJobOperationsStore = create<JobOperationsState>((set, get) => ({
         ).filter(op => op.pathIds.length > 0),   // auto-remove empty ops
     })),
 
-    clearAll: () => set({ svgPaths: [], operations: [], selectedPathIds: [] }),
+    clearAll: () => set({ 
+        svgPaths: [], 
+        operations: [], 
+        selectedPathIds: [], 
+        designSource: null, 
+        designType: null, 
+        designName: '',
+        posX: 0,
+        posY: 0,
+        scalePct: 100,
+        rotation: 0
+    }),
 }));

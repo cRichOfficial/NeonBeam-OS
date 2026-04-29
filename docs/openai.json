@@ -1,0 +1,449 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "NeonBeam Lens API",
+        "version": "1.0.0"
+    },
+    "paths": {
+        "/api/health": {
+            "get": {
+                "summary": "Health Check",
+                "operationId": "health_check_api_health_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/apriltag/generate/{tag_id}": {
+            "get": {
+                "summary": "Generate Tag",
+                "description": "Generate a single tag with physical sizing metadata.",
+                "operationId": "generate_tag_api_apriltag_generate__tag_id__get",
+                "parameters": [
+                    {
+                        "name": "tag_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "title": "Tag Id"
+                        }
+                    },
+                    {
+                        "name": "size_mm",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "number",
+                            "default": 50.0,
+                            "title": "Size Mm"
+                        }
+                    },
+                    {
+                        "name": "dpi",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 300,
+                            "title": "Dpi"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/apriltag/batch": {
+            "get": {
+                "summary": "Batch Generate Tags",
+                "description": "Return a list of tags with download links and DPI info.",
+                "operationId": "batch_generate_tags_api_apriltag_batch_get",
+                "parameters": [
+                    {
+                        "name": "start_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 0,
+                            "title": "Start Id"
+                        }
+                    },
+                    {
+                        "name": "count",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 4,
+                            "title": "Count"
+                        }
+                    },
+                    {
+                        "name": "size_mm",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "number",
+                            "default": 50.0,
+                            "title": "Size Mm"
+                        }
+                    },
+                    {
+                        "name": "dpi",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 300,
+                            "title": "Dpi"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/lens/calibrate": {
+            "post": {
+                "summary": "Calibrate",
+                "operationId": "calibrate_api_lens_calibrate_post",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CalibrationRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/lens/detect": {
+            "get": {
+                "summary": "Detect Objects",
+                "operationId": "detect_objects_api_lens_detect_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/lens/transform": {
+            "post": {
+                "summary": "Calculate Transform",
+                "operationId": "calculate_transform_api_lens_transform_post",
+                "requestBody": {
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Body_calculate_transform_api_lens_transform_post"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/lens/stream": {
+            "get": {
+                "summary": "Stream Video",
+                "description": "MJPEG streaming endpoint.",
+                "operationId": "stream_video_api_lens_stream_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/lens/frame": {
+            "get": {
+                "summary": "Get Frame",
+                "description": "Return a single frame as JPEG.",
+                "operationId": "get_frame_api_lens_frame_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "Body_calculate_transform_api_lens_transform_post": {
+                "properties": {
+                    "workpiece_id": {
+                        "type": "string",
+                        "title": "Workpiece Id"
+                    },
+                    "design_width_mm": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Design Width Mm"
+                    },
+                    "design_height_mm": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Design Height Mm"
+                    },
+                    "dpi": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Dpi"
+                    },
+                    "padding_mm": {
+                        "type": "number",
+                        "title": "Padding Mm",
+                        "default": 5.0
+                    },
+                    "design_file": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "contentMediaType": "application/octet-stream"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Design File"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "workpiece_id"
+                ],
+                "title": "Body_calculate_transform_api_lens_transform_post"
+            },
+            "CalibrationPoint": {
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "title": "Id"
+                    },
+                    "physical_x": {
+                        "type": "number",
+                        "title": "Physical X"
+                    },
+                    "physical_y": {
+                        "type": "number",
+                        "title": "Physical Y"
+                    },
+                    "size_mm": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Size Mm"
+                    },
+                    "anchor": {
+                        "type": "string",
+                        "title": "Anchor",
+                        "default": "center"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "physical_x",
+                    "physical_y"
+                ],
+                "title": "CalibrationPoint"
+            },
+            "CalibrationRequest": {
+                "properties": {
+                    "tags": {
+                        "items": {
+                            "$ref": "#/components/schemas/CalibrationPoint"
+                        },
+                        "type": "array",
+                        "title": "Tags"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "tags"
+                ],
+                "title": "CalibrationRequest"
+            },
+            "HTTPValidationError": {
+                "properties": {
+                    "detail": {
+                        "items": {
+                            "$ref": "#/components/schemas/ValidationError"
+                        },
+                        "type": "array",
+                        "title": "Detail"
+                    }
+                },
+                "type": "object",
+                "title": "HTTPValidationError"
+            },
+            "ValidationError": {
+                "properties": {
+                    "loc": {
+                        "items": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "integer"
+                                }
+                            ]
+                        },
+                        "type": "array",
+                        "title": "Location"
+                    },
+                    "msg": {
+                        "type": "string",
+                        "title": "Message"
+                    },
+                    "type": {
+                        "type": "string",
+                        "title": "Error Type"
+                    },
+                    "input": {
+                        "title": "Input"
+                    },
+                    "ctx": {
+                        "type": "object",
+                        "title": "Context"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "loc",
+                    "msg",
+                    "type"
+                ],
+                "title": "ValidationError"
+            }
+        }
+    }
+}

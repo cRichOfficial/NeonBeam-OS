@@ -85,21 +85,17 @@ export const StudioModule: React.FC = () => {
     const maxSpindleS = useAppSettingsStore(s => s.settings.maxSpindleS) || 1000;  // mirrors $30
     const { presets } = usePresetsStore();
 
-    // SVG layer / operations store
-    const svgPaths        = useJobOperationsStore(s => s.svgPaths);
-    const operations      = useJobOperationsStore(s => s.operations);
-    const selectedPathIds = useJobOperationsStore(s => s.selectedPathIds);
-    const { setSvgPaths, togglePathSelect, addFromSelection,
+    const { svgPaths, operations, selectedPathIds, 
+            posX, posY, scalePct, rotation,
+            setSvgPaths, togglePathSelect, addFromSelection,
             updateOperation, updateParams, removeOperation,
-            moveOp, removePathFromOp, clearAll: clearOps } = useJobOperationsStore();
+            moveOp, removePathFromOp, clearAll: clearOps,
+            setDesign, setPlacement } = useJobOperationsStore();
 
     // ── File / design state ──
     const [fileKind, setFileKind]   = useState<FileKind | null>(null);
     const [fileName, setFileName]   = useState('');
     const [ditherMethod, setDitherMethod] = useState<DitherMethod>('floyd-steinberg');
-    const [posX, setPosX]           = useState(0);
-    const [posY, setPosY]           = useState(0);
-    const [scalePct, setScalePct]   = useState(100);
     const [dpi, setDpi]             = useState(() => svgDpi);
     const [selectedPreset, setSelectedPreset] = useState('');
     // Per-operation UI state: which op accordion is expanded
@@ -467,7 +463,7 @@ export const StudioModule: React.FC = () => {
         ctx.beginPath(); ctx.moveTo(ML, plotH - 8); ctx.lineTo(ML, plotH); ctx.moveTo(ML, plotH); ctx.lineTo(ML + 8, plotH); ctx.stroke();
         ctx.restore();
 
-    }, [renderTick, mmW, mmH, scX, scY, plotW, plotH, major, minor, fileKind, posX, posY, scalePct, operations, dpi, activeTab, gcodoMoves, viewZoom, viewOffsetX, viewOffsetY]);
+    }, [renderTick, mmW, mmH, scX, scY, plotW, plotH, major, minor, fileKind, posX, posY, scalePct, rotation, operations, dpi, activeTab, gcodoMoves, viewZoom, viewOffsetX, viewOffsetY]);
 
 
     // ── Interaction Handlers ──
@@ -571,6 +567,7 @@ export const StudioModule: React.FC = () => {
             reader.onload = e => {
                 const text = e.target?.result as string;
                 svgTextRef.current = text;
+                setDesign('svg', text, file.name);
                 // Parse SVG paths for the layer panel (async-safe: runs after img loads)
                 const discovered = parseSvgPaths(text);
                 clearOps();
@@ -578,13 +575,14 @@ export const StudioModule: React.FC = () => {
                 const blob = new Blob([text], { type: 'image/svg+xml;charset=utf-8' });
                 const url = URL.createObjectURL(blob);
                 const img = new Image();
-                img.onload = () => { designImgRef.current = img; setFileKind('svg'); setPosX(0); setPosY(0); setScalePct(100); bumpRender(); };
+                img.onload = () => { designImgRef.current = img; setFileKind('svg'); bumpRender(); };
                 img.src = url;
             };
             reader.readAsText(file);
         } else {
             reader.onload = e => {
                 const url = e.target?.result as string;
+                setDesign('bitmap', url, file.name);
                 const img = new Image();
                 img.onload = () => {
                     designImgRef.current = img;
@@ -598,7 +596,7 @@ export const StudioModule: React.FC = () => {
                     sctx.fillRect(0, 0, sw, sh);
                     sctx.drawImage(img, 0, 0, sw, sh);
                     srcCanvasRef.current = sc;
-                    setFileKind('bitmap'); setPosX(0); setPosY(0); setScalePct(100);
+                    setFileKind('bitmap');
                     bumpRender();
                 };
                 img.src = url;
@@ -671,7 +669,7 @@ export const StudioModule: React.FC = () => {
             setIsGenerating(false);
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [fileKind, posX, posY, scalePct, dpi, operations, ditherMethod, opPower, opRate, opPasses, opAirAssist, opMargin, opLineDistance, opLineAngle]);
+    }, [fileKind, posX, posY, scalePct, rotation, dpi, operations, ditherMethod, opPower, opRate, opPasses, opAirAssist, opMargin, opLineDistance, opLineAngle]);
 
     // ── Save GCode ──
     const saveGCode = useCallback(() => {
@@ -760,7 +758,7 @@ export const StudioModule: React.FC = () => {
     };
     const clearDesign = () => {
         designImgRef.current = null; srcCanvasRef.current = null; ditheredRef.current = null; svgTextRef.current = '';
-        setFileKind(null); setFileName(''); setPosX(0); setPosY(0); setScalePct(100);
+        setFileKind(null); setFileName('');
         setGcodeText(''); setGCodeMoves([]); setActiveTab('design'); setSelectedPreset('');
         clearOps(); bumpRender();
     };
@@ -1215,9 +1213,9 @@ export const StudioModule: React.FC = () => {
                             <p className="text-[10px] uppercase text-gray-400 font-bold tracking-widest mb-2.5">Position, Scale &amp; DPI</p>
                             <div className="grid grid-cols-3 gap-2 mb-3">
                                 {[
-                                    { label: 'X (mm)',  value: posX,     min: undefined, max: mmW, step: 1, set: setPosX },
-                                    { label: 'Y (mm)',  value: posY,     min: undefined, max: mmH, step: 1, set: setPosY },
-                                    { label: 'Scale %', value: scalePct, min: 1, max: 500, step: 5, set: setScalePct },
+                                    { label: 'X (mm)',  value: posX,     min: undefined, max: mmW, step: 1, set: (v: number) => setPlacement({ posX: v }) },
+                                    { label: 'Y (mm)',  value: posY,     min: undefined, max: mmH, step: 1, set: (v: number) => setPlacement({ posY: v }) },
+                                    { label: 'Scale %', value: scalePct, min: 1, max: 500, step: 5, set: (v: number) => setPlacement({ scalePct: v }) },
                                 ].map(({ label, value, min, set }) => (
                                     <div key={label}>
                                         <label className="block text-[9px] text-gray-400 mb-1 uppercase font-bold">{label}</label>

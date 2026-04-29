@@ -1,0 +1,604 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { lensService } from '../services/lensService';
+import { useAppSettingsStore } from '../store/appSettingsStore';
+import { useJobOperationsStore } from '../store/jobOperationsStore';
+import { useNavigationStore } from '../store/navigationStore';
+import { NumericInput } from '../components/NumericInput';
+import type { DetectionResult, TransformResponse, CalibrationPoint } from '../types/lens';
+
+// Canvas dimensions (similar to StudioModule)
+const CW = 480, CH = 300, ML = 32, MB = 20;
+const DW = CW - ML, DH = CH - MB;
+
+type LensTab = 'align' | 'calibrate' | 'tags';
+
+export const LensModule: React.FC = () => {
+    // ── Store Selectors ──
+    const mmW = useAppSettingsStore(s => s.settings.machineWidth);
+    const mmH = useAppSettingsStore(s => s.settings.machineHeight);
+    const lensApiUrl = useAppSettingsStore(s => s.settings.lensApiUrl);
+    const major = useAppSettingsStore(s => s.settings.majorSpacing) || 50;
+    const minor = useAppSettingsStore(s => s.settings.minorSpacing) || 10;
+    
+    const { designSource, designType, designName, setPlacement } = useJobOperationsStore();
+
+    // ── UI State ──
+    const [activeTab, setActiveTab] = useState<LensTab>('align');
+    const [isStreaming, setIsStreaming] = useState(true);
+    const [detections, setDetections] = useState<DetectionResult[]>([]);
+    const [selectedWorkpieceId, setSelectedWorkpieceId] = useState<string | null>(null);
+    const [isDetecting, setIsDetecting] = useState(false);
+    const [isTransforming, setIsTransforming] = useState(false);
+    const [transformResult, setTransformResult] = useState<TransformResponse | null>(null);
+
+    // ── Calibration State ──
+    const [calibrationPoints, setCalibrationPoints] = useState<CalibrationPoint[]>([]);
+    const [isCalibrating, setIsCalibrating] = useState(false);
+
+    // ── Tag Generator State ──
+    const [tagId, setTagId] = useState(0);
+    const [tagSize, setTagSize] = useState(50);
+    const [tagDpi, setTagDpi] = useState(300);
+    const [generatedTag, setGeneratedTag] = useState<{ url: string; tag_id: number; size_mm: number } | null>(null);
+    const [isGeneratingTag, setIsGeneratingTag] = useState(false);
+
+    // ── Canvas Refs ──
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const [renderTick, setRenderTick] = useState(0);
+    const bumpRender = useCallback(() => setRenderTick(t => t + 1), []);
+
+    // ── Viewport Logic (Simpler than StudioModule as we don't zoom/pan here yet) ──
+    const baseSc = Math.min(DW / mmW, DH / mmH);
+    const scX = baseSc;
+    const scY = baseSc;
+    const plotW = scX * mmW;
+    const plotH = scY * mmH;
+
+    const streamUrl = lensService.getStreamUrl();
+
+    // ── Interaction ──
+    const refreshDetections = async () => {
+        setIsDetecting(true);
+        try {
+            const results = await lensService.detectObjects();
+            setDetections(results);
+        } catch (err) {
+            console.error('Detection failed', err);
+        } finally {
+            setIsDetecting(false);
+        }
+    };
+
+    const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+        const rect = canvasRef.current?.getBoundingClientRect();
+        if (!rect) return;
+        
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+
+        // Convert canvas pixels to mm
+        const mmX = (x - ML) / baseSc;
+        const mmY = (plotH - (y)) / baseSc;
+
+        if (activeTab === 'align') {
+            // Find closest detection
+            let closestId = null;
+            let minDist = 20; // 20mm threshold
+
+            for (const d of detections) {
+                if (d.box) {
+                    const [bx, by, bw, bh] = d.box;
+                    if (mmX >= bx && mmX <= bx + bw && mmY >= by && mmY <= by + bh) {
+                        closestId = d.workpiece_id;
+                        break;
+                    }
+                } else if (d.points && d.points.length > 0) {
+                    const cx = d.points.reduce((acc, p) => acc + p.x, 0) / d.points.length;
+                    const cy = d.points.reduce((acc, p) => acc + p.y, 0) / d.points.length;
+                    const dist = Math.hypot(mmX - cx, mmY - cy);
+                    if (dist < minDist) {
+                        minDist = dist;
+                        closestId = d.workpiece_id;
+                    }
+                }
+            }
+            setSelectedWorkpieceId(closestId);
+        }
+    };
+
+    const alignDesign = async () => {
+        if (!selectedWorkpieceId || !designSource) return;
+        setIsTransforming(true);
+        try {
+            let designFile: Blob | string = designSource;
+            if (designType === 'bitmap' && designSource.startsWith('data:')) {
+                const res = await fetch(designSource);
+                designFile = await res.blob();
+            }
+
+            const result = await lensService.calculateTransform({
+                workpiece_id: selectedWorkpieceId,
+                design_file: designFile,
+            });
+            setTransformResult(result);
+            if (result.success) {
+                setPlacement({
+                    posX: result.translation?.x ?? 0,
+                    posY: result.translation?.y ?? 0,
+                    scalePct: (result.scale ?? 1) * 100,
+                    rotation: result.rotation ?? 0
+                });
+            }
+        } catch (err) {
+            console.error('Alignment failed', err);
+            alert('Alignment failed. Check console for details.');
+        } finally {
+            setIsTransforming(false);
+        }
+    };
+
+    const [isBatch, setIsBatch] = useState(false);
+    const [batchTags, setBatchTags] = useState<{ url: string; tag_id: number; size_mm: number }[]>([]);
+
+    const generateTag = async () => {
+        setIsGeneratingTag(true);
+        try {
+            // Cleanup existing URLs safely
+            if (generatedTag?.url?.startsWith('blob:')) URL.revokeObjectURL(generatedTag.url);
+            if (Array.isArray(batchTags)) {
+                batchTags.forEach(t => {
+                    if (t.url?.startsWith('blob:')) URL.revokeObjectURL(t.url);
+                });
+            }
+            setBatchTags([]);
+            setGeneratedTag(null);
+
+            if (isBatch) {
+                // Reverting to server-side batch generation as requested
+                const results = await lensService.batchGenerateTags(0, 4, tagSize, tagDpi);
+                // Assume the results are objects with URLs that can be used directly
+                setBatchTags(results);
+            } else {
+                const blob = await lensService.generateTag(tagId, tagSize, tagDpi);
+                const url = URL.createObjectURL(blob);
+                setGeneratedTag({ url, tag_id: tagId, size_mm: tagSize });
+            }
+        } catch (err) {
+            console.error('Tag generation failed', err);
+            alert('Failed to generate tag(s). Check Lens API connection.');
+        } finally {
+            setIsGeneratingTag(false);
+        }
+    };
+
+    // Effect to cleanup Blob URL on unmount
+    useEffect(() => {
+        return () => {
+            if (generatedTag?.url?.startsWith('blob:')) URL.revokeObjectURL(generatedTag.url);
+            if (Array.isArray(batchTags)) {
+                batchTags.forEach(t => {
+                    if (t.url?.startsWith('blob:')) URL.revokeObjectURL(t.url);
+                });
+            }
+        };
+    }, [generatedTag, batchTags]);
+
+    const submitCalibration = async () => {
+        if (calibrationPoints.length < 4) {
+            alert('At least 4 points are required for calibration.');
+            return;
+        }
+        setIsCalibrating(true);
+        try {
+            await lensService.calibrate(calibrationPoints);
+            alert('Calibration successful!');
+        } catch (err) {
+            console.error('Calibration failed', err);
+            alert('Calibration failed.');
+        } finally {
+            setIsCalibrating(false);
+        }
+    };
+
+    const addCalibrationPoint = (id: number, x: number, y: number, anchor: string = 'center') => {
+        setCalibrationPoints(prev => {
+            const existing = prev.find(p => p.id === id);
+            if (existing) {
+                return prev.map(p => p.id === id ? { ...p, physical_x: x, physical_y: y, anchor } : p);
+            }
+            return [...prev, { id, physical_x: x, physical_y: y, size_mm: tagSize, anchor }];
+        });
+    };
+
+    // ── Drawing Logic (Enhanced Grid/Axis) ──
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        // 1. Background
+        ctx.fillStyle = '#080808'; ctx.fillRect(0, 0, CW, CH);
+
+        // Bed background
+        ctx.fillStyle = '#111111'; ctx.fillRect(ML, 0, plotW, plotH);
+        ctx.strokeStyle = 'rgba(0,240,255,0.1)'; ctx.lineWidth = 1;
+        ctx.strokeRect(ML, 0, plotW, plotH);
+
+        // 2. Grid (Extended)
+        const gMinX = -50, gMaxX = mmW + 50, gMinY = -50, gMaxY = mmH + 50;
+
+        // Minor grid
+        ctx.beginPath(); ctx.strokeStyle = 'rgba(0,240,255,0.03)'; ctx.lineWidth = 0.5;
+        for (let x = Math.floor(gMinX/minor)*minor; x <= gMaxX; x += minor) { const px = ML + x * scX; ctx.moveTo(px, 0); ctx.lineTo(px, plotH); }
+        for (let y = Math.floor(gMinY/minor)*minor; y <= gMaxY; y += minor) { const py = plotH - y * scY; ctx.moveTo(ML, py); ctx.lineTo(ML + plotW, py); }
+        ctx.stroke();
+
+        // Major grid
+        ctx.beginPath(); ctx.strokeStyle = 'rgba(0,240,255,0.08)'; ctx.lineWidth = 1;
+        for (let x = Math.floor(gMinX/major)*major; x <= gMaxX; x += major) { const px = ML + x * scX; ctx.moveTo(px, 0); ctx.lineTo(px, plotH); }
+        for (let y = Math.floor(gMinY/major)*major; y <= gMaxY; y += major) { const py = plotH - y * scY; ctx.moveTo(ML, py); ctx.lineTo(ML + plotW, py); }
+        ctx.stroke();
+
+        // 3. Origin Highlight
+        ctx.beginPath(); ctx.strokeStyle = 'rgba(0,240,255,0.2)'; ctx.lineWidth = 2;
+        ctx.moveTo(ML, 0); ctx.lineTo(ML, plotH); // X=0
+        ctx.moveTo(ML, plotH); ctx.lineTo(ML + plotW, plotH); // Y=0
+        ctx.stroke();
+
+        // 4. Axis Labels & Ticks
+        ctx.font = `bold 10px ui-monospace, monospace`;
+        ctx.fillStyle = 'rgba(0,200,220,0.6)';
+        
+        // X Labels & Ticks
+        ctx.textBaseline = 'top'; ctx.textAlign = 'center';
+        for (let x = 0; x <= mmW; x += major) {
+            const px = ML + x * scX;
+            if (px >= ML && px <= CW) {
+                ctx.fillText(`${x}`, px, plotH + 4);
+                // Ticks
+                ctx.beginPath(); ctx.strokeStyle = 'rgba(0,240,255,0.3)';
+                ctx.moveTo(px, plotH); ctx.lineTo(px, plotH + 3); ctx.stroke();
+            }
+        }
+        
+        // Y Labels & Ticks
+        ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+        for (let y = 0; y <= mmH; y += major) {
+            const py = plotH - y * scY;
+            if (py >= 0 && py <= plotH) {
+                if (y !== 0) ctx.fillText(`${y}`, ML - 6, py);
+                // Ticks
+                ctx.beginPath(); ctx.strokeStyle = 'rgba(0,240,255,0.3)';
+                ctx.moveTo(ML, py); ctx.lineTo(ML - 3, py); ctx.stroke();
+            }
+        }
+
+        // 5. Origin Marker
+        ctx.fillStyle = '#ff007f'; ctx.beginPath(); ctx.arc(ML, plotH, 3, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(255,0,127,0.5)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(ML, plotH - 6); ctx.lineTo(ML, plotH); ctx.moveTo(ML, plotH); ctx.lineTo(ML + 6, plotH); ctx.stroke();
+
+        // 6. Detections (Align Tab)
+        if (activeTab === 'align') {
+            detections.forEach(d => {
+                const isSelected = d.workpiece_id === selectedWorkpieceId;
+                ctx.strokeStyle = isSelected ? '#00f0ff' : 'rgba(0,240,255,0.4)';
+                ctx.lineWidth = isSelected ? 2 : 1;
+                
+                if (d.box) {
+                    const [bx, by, bw, bh] = d.box;
+                    ctx.strokeRect(ML + bx * scX, plotH - (by + bh) * scY, bw * scX, bh * scY);
+                } else if (d.points && d.points.length > 0) {
+                    ctx.beginPath();
+                    ctx.moveTo(ML + d.points[0].x * scX, plotH - d.points[0].y * scY);
+                    for (let i = 1; i < d.points.length; i++) {
+                        ctx.lineTo(ML + d.points[i].x * scX, plotH - d.points[i].y * scY);
+                    }
+                    ctx.closePath(); ctx.stroke();
+                }
+
+                ctx.fillStyle = isSelected ? '#00f0ff' : 'rgba(0,240,255,0.6)';
+                ctx.font = '9px monospace';
+                const lx = d.box ? d.box[0] : (d.points?.[0].x ?? 0);
+                const ly = d.box ? d.box[1] + d.box[3] : (d.points?.[0].y ?? 0);
+                ctx.fillText(d.label || d.workpiece_id, ML + lx * scX + 2, plotH - ly * scY - 2);
+            });
+        }
+
+        // 7. Calibration Points (Calibrate Tab)
+        if (activeTab === 'calibrate') {
+            calibrationPoints.forEach(p => {
+                const px = ML + p.physical_x * scX;
+                const py = plotH - p.physical_y * scY;
+                ctx.fillStyle = '#00f0ff';
+                ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2); ctx.fill();
+                ctx.strokeStyle = 'white'; ctx.lineWidth = 1; ctx.stroke();
+                ctx.font = 'bold 9px sans-serif'; ctx.fillStyle = 'white';
+                ctx.fillText(`ID:${p.id}`, px + 6, py - 6);
+            });
+        }
+
+    }, [detections, selectedWorkpieceId, mmW, mmH, scX, scY, plotW, plotH, major, minor, activeTab, calibrationPoints, renderTick]);
+
+    return (
+        <div className="flex flex-col h-full bg-black/10 text-white p-4">
+            {/* Header */}
+            <div className="flex justify-between items-center mb-4">
+                <div>
+                    <h2 className="text-2xl font-black text-miami-cyan tracking-tight">NeonBeam Lens</h2>
+                    <p className="text-xs text-gray-500 font-mono">Vision-Aided Alignment System</p>
+                </div>
+                <div className="flex gap-2 bg-black/40 p-1 rounded-xl border border-gray-800">
+                    {(['align', 'calibrate', 'tags'] as LensTab[]).map(tab => (
+                        <button key={tab} onClick={() => setActiveTab(tab)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all uppercase ${
+                                activeTab === tab ? 'bg-miami-cyan text-black' : 'text-gray-500 hover:text-gray-300'
+                            }`}>
+                            {tab}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            <div className="flex flex-col gap-4 overflow-y-auto">
+                {/* ── ALIGN TAB ── */}
+                {activeTab === 'align' && (
+                    <>
+                        <div className="relative aspect-video bg-black rounded-2xl overflow-hidden border border-gray-800 shadow-2xl">
+                            {isStreaming && lensApiUrl ? (
+                                <img src={streamUrl} alt="Lens Stream" className="w-full h-full object-contain" onError={() => setIsStreaming(false)} />
+                            ) : (
+                                <div className="w-full h-full flex flex-col items-center justify-center text-gray-600 gap-2">
+                                    <span className="text-4xl">📷</span>
+                                    <span className="text-sm font-bold uppercase tracking-widest">Stream Unavailable</span>
+                                </div>
+                            )}
+                            <div className="absolute top-4 right-4 bg-black/60 backdrop-blur-md border border-white/10 rounded-xl p-3 pointer-events-none">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <div className={`w-2 h-2 rounded-full ${isStreaming ? 'bg-red-500 animate-pulse' : 'bg-gray-500'}`} />
+                                    <span className="text-[10px] font-bold text-gray-300 uppercase tracking-tighter">LIVE</span>
+                                </div>
+                                <div className="text-[9px] text-gray-400 font-mono">{detections.length} objects</div>
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                            <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Workspace View</span>
+                                <button onClick={refreshDetections} disabled={isDetecting} className="text-[10px] text-miami-cyan hover:underline uppercase font-bold">
+                                    {isDetecting ? 'Detecting...' : '↻ Refresh Objects'}
+                                </button>
+                            </div>
+                            <div className="bg-black/40 rounded-2xl border border-gray-800 p-2 flex items-center justify-center shadow-inner">
+                                <canvas ref={canvasRef} width={CW} height={CH} onClick={handleCanvasClick} className="cursor-crosshair rounded-lg" />
+                            </div>
+                        </div>
+
+                        <div className="bg-black/40 border border-gray-800 rounded-2xl p-4 flex flex-col gap-4">
+                            <div className="flex items-center justify-between">
+                                <div className="flex flex-col">
+                                    <span className="text-[10px] font-bold text-gray-500 uppercase">Selected Workpiece</span>
+                                    <span className="text-sm text-miami-cyan font-black truncate max-w-[200px]">
+                                        {selectedWorkpieceId || 'None'}
+                                    </span>
+                                </div>
+                                <button disabled={!selectedWorkpieceId || !designSource || isTransforming} onClick={alignDesign}
+                                    className="bg-gradient-to-r from-miami-cyan to-miami-purple px-6 py-2 rounded-xl font-black text-sm shadow-lg shadow-miami-cyan/20 disabled:opacity-30 transition-all">
+                                    {isTransforming ? 'ALIGNING...' : 'ALIGN TO WORKPIECE'}
+                                </button>
+                            </div>
+                            {transformResult?.success && (
+                                <div className="border-t border-gray-800 pt-3 grid grid-cols-3 gap-2">
+                                    <div className="text-center">
+                                        <div className="text-[9px] text-gray-500 uppercase">Pos</div>
+                                        <div className="text-xs font-mono">{transformResult.translation?.x.toFixed(1)},{transformResult.translation?.y.toFixed(1)}</div>
+                                    </div>
+                                    <div className="text-center">
+                                        <div className="text-[9px] text-gray-500 uppercase">Rot</div>
+                                        <div className="text-xs font-mono">{transformResult.rotation?.toFixed(1)}°</div>
+                                    </div>
+                                    <button onClick={() => useNavigationStore.getState().navigateTo('studio')} className="bg-miami-cyan/20 text-miami-cyan text-[10px] font-black rounded border border-miami-cyan/30">STUDIO →</button>
+                                </div>
+                            )}
+                        </div>
+                    </>
+                )}
+
+                {/* ── CALIBRATE TAB ── */}
+                {activeTab === 'calibrate' && (
+                    <div className="flex flex-col gap-4">
+                        <div className="bg-miami-cyan/10 border border-miami-cyan/20 rounded-2xl p-4">
+                            <h3 className="text-sm font-black text-miami-cyan uppercase mb-1">Machine Calibration</h3>
+                            <p className="text-xs text-gray-400 leading-relaxed">
+                                Place AprilTags on your machine bed and enter their physical coordinates (mm) to map the camera view to your workspace.
+                            </p>
+                        </div>
+
+                        <div className="bg-black/40 rounded-2xl border border-gray-800 p-2 flex items-center justify-center">
+                            <canvas ref={canvasRef} width={CW} height={CH} className="rounded-lg" />
+                        </div>
+
+                        <div className="bg-black/40 border border-gray-800 rounded-2xl p-4 space-y-4">
+                            <div className="flex items-center justify-between">
+                                <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Points ({calibrationPoints.length})</span>
+                                <button onClick={() => setCalibrationPoints([])} className="text-[10px] text-red-400 hover:underline">Clear All</button>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto pr-2 pb-4">
+                                {[0, 1, 2, 3].map(i => {
+                                    const p = calibrationPoints.find(cp => cp.id === i);
+                                    const anchor = p?.anchor || 'center';
+                                    
+                                    const AnchorDot = ({ pos, label }: { pos: string, label: string }) => (
+                                        <button 
+                                            onClick={() => addCalibrationPoint(i, p?.physical_x ?? 0, p?.physical_y ?? 0, pos)}
+                                            className={`absolute w-8 h-8 flex items-center justify-center transition-all z-20`}
+                                            style={{
+                                                top: pos.includes('top') ? '-16px' : pos.includes('bottom') ? 'auto' : '50%',
+                                                bottom: pos.includes('bottom') ? '-16px' : 'auto',
+                                                left: pos.includes('left') ? '-16px' : pos.includes('right') ? 'auto' : '50%',
+                                                right: pos.includes('right') ? '-16px' : 'auto',
+                                                transform: pos === 'center' ? 'translate(-50%, -50%)' : 
+                                                           pos.includes('top') || pos.includes('bottom') ? (pos.includes('left') || pos.includes('right') ? 'none' : 'translateX(-50%)') : 
+                                                           'translateY(-50%)'
+                                            }}
+                                            title={label}
+                                        >
+                                            <div className={`w-4 h-4 rounded-full border-2 transition-all ${
+                                                anchor === pos 
+                                                    ? 'bg-miami-cyan border-white scale-125 shadow-[0_0_12px_rgba(0,240,255,1)]' 
+                                                    : 'bg-gray-800 border-gray-600'
+                                            }`} />
+                                        </button>
+                                    );
+
+                                    return (
+                                        <div key={i} className="flex flex-col gap-3 bg-black/60 p-3 rounded-2xl border border-gray-800 relative overflow-hidden">
+                                            <div className="flex justify-between items-center mb-1">
+                                                <span className="text-[10px] font-black text-gray-500 uppercase tracking-tighter">Tag ID</span>
+                                                <span className="text-sm font-black text-miami-cyan">{i}</span>
+                                            </div>
+
+                                            {/* Visual Anchor Selector */}
+                                            <div className="flex justify-center py-4">
+                                                <div className="relative w-16 h-16 bg-gray-900/50 border border-gray-700 rounded-lg">
+                                                    {/* Background Pattern representing an AprilTag */}
+                                                    <div className="absolute inset-2 border-2 border-dashed border-gray-800 rounded opacity-50" />
+                                                    
+                                                    <AnchorDot pos="top-left" label="Top Left" />
+                                                    <AnchorDot pos="top-right" label="Top Right" />
+                                                    <AnchorDot pos="center" label="Center" />
+                                                    <AnchorDot pos="bottom-left" label="Bottom Left" />
+                                                    <AnchorDot pos="bottom-right" label="Bottom Right" />
+                                                </div>
+                                            </div>
+
+                                            <div className="text-[9px] text-center font-bold text-gray-500 uppercase -mt-2 mb-1">
+                                                Anchor: <span className="text-miami-cyan">{anchor}</span>
+                                            </div>
+
+                                            {/* Coordinate Inputs */}
+                                            <div className="flex flex-col gap-2">
+                                                <div className="relative">
+                                                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[9px] text-gray-600 font-bold">X</span>
+                                                    <NumericInput 
+                                                        value={p?.physical_x ?? 0} 
+                                                        onChange={v => addCalibrationPoint(i, v, p?.physical_y ?? 0, anchor)} 
+                                                        className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-xl p-2 pl-6 text-xs font-mono transition-colors" 
+                                                    />
+                                                </div>
+                                                <div className="relative">
+                                                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[9px] text-gray-600 font-bold">Y</span>
+                                                    <NumericInput 
+                                                        value={p?.physical_y ?? 0} 
+                                                        onChange={v => addCalibrationPoint(i, p?.physical_x ?? 0, v, anchor)} 
+                                                        className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-xl p-2 pl-6 text-xs font-mono transition-colors" 
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            <button onClick={submitCalibration} disabled={isCalibrating || calibrationPoints.length < 4}
+                                className="w-full py-3 bg-miami-cyan text-black font-black rounded-xl shadow-lg shadow-miami-cyan/20 disabled:opacity-30">
+                                {isCalibrating ? 'SUBMITTING...' : 'UPDATE CALIBRATION'}
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* ── TAGS TAB ── */}
+                {activeTab === 'tags' && (
+                    <div className="flex flex-col gap-4">
+                        <div className="bg-black/40 border border-gray-800 rounded-2xl p-4 space-y-4">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-sm font-black text-miami-pink uppercase">AprilTag Generator</h3>
+                                <div className="flex bg-black/60 p-1 rounded-lg border border-gray-700">
+                                    <button onClick={() => setIsBatch(false)} className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-all ${!isBatch ? 'bg-miami-pink text-black' : 'text-gray-500'}`}>Single</button>
+                                    <button onClick={() => setIsBatch(true)} className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-all ${isBatch ? 'bg-miami-pink text-black' : 'text-gray-500'}`}>Full Set</button>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className={isBatch ? 'opacity-30 pointer-events-none' : ''}>
+                                    <label className="text-[9px] text-gray-500 uppercase font-bold block mb-1">Tag ID (0-3)</label>
+                                    <NumericInput value={tagId} onChange={v => setTagId(Math.min(3, Math.max(0, v)))} min={0} max={3} className="w-full bg-black border border-gray-700 rounded-lg p-2 text-sm font-mono" />
+                                </div>
+                                <div>
+                                    <label className="text-[9px] text-gray-500 uppercase font-bold block mb-1">Size (mm)</label>
+                                    <NumericInput value={tagSize} onChange={setTagSize} min={10} className="w-full bg-black border border-gray-700 rounded-lg p-2 text-sm font-mono" />
+                                </div>
+                            </div>
+                            <button onClick={generateTag} disabled={isGeneratingTag}
+                                className="w-full py-3 bg-miami-pink text-black font-black rounded-xl shadow-lg shadow-miami-pink/20">
+                                {isGeneratingTag ? 'GENERATING...' : isBatch ? 'GENERATE FULL SET (0-3)' : 'GENERATE SINGLE TAG'}
+                            </button>
+                        </div>
+
+                        {generatedTag && (
+                            <div className="bg-white p-4 rounded-2xl flex flex-col items-center gap-4 animate-in zoom-in duration-300">
+                                <img src={generatedTag.url} alt="Generated Tag" className="w-48 h-48 pixelated" style={{ imageRendering: 'pixelated' }} />
+                                <div className="flex flex-col items-center">
+                                    <span className="text-[10px] text-gray-400 font-bold uppercase">Ready to Print</span>
+                                    <span className="text-sm text-black font-black">ID {generatedTag.tag_id} · {generatedTag.size_mm}mm</span>
+                                </div>
+                                <a href={generatedTag.url} download={`apriltag-${generatedTag.tag_id}.png`}
+                                    className="w-full text-center py-2 bg-black text-white font-black rounded-lg text-xs no-print">
+                                    DOWNLOAD PNG
+                                </a>
+                            </div>
+                        )}
+
+                        {batchTags.length > 0 && (
+                            <div className="space-y-4 print-area">
+                                <style>{`
+                                    @media print {
+                                        body * { visibility: hidden; }
+                                        .print-area, .print-area * { visibility: visible; }
+                                        .print-area { 
+                                            position: absolute; left: 0; top: 0; width: 100%; 
+                                            display: flex; flex-wrap: wrap; gap: 40px; padding: 20px; 
+                                        }
+                                        .no-print { display: none !important; }
+                                        .print-tag-img { 
+                                            width: ${tagSize}mm !important; 
+                                            height: ${tagSize}mm !important; 
+                                            image-rendering: pixelated;
+                                            border: 1px solid #eee;
+                                        }
+                                    }
+                                `}</style>
+                                <div className="grid grid-cols-2 gap-3 no-print">
+                                    {batchTags.map(tag => (
+                                        <div key={tag.tag_id} className="bg-white p-3 rounded-xl flex flex-col items-center gap-2">
+                                            <img src={tag.url} alt={`Tag ${tag.tag_id}`} className="w-24 h-24 pixelated" style={{ imageRendering: 'pixelated' }} />
+                                            <span className="text-[10px] text-black font-black">ID {tag.tag_id} · {tag.size_mm}mm</span>
+                                            <a href={tag.url} download={`apriltag-${tag.tag_id}.png`} className="text-[9px] bg-black text-white px-2 py-1 rounded font-bold">DL PNG</a>
+                                        </div>
+                                    ))}
+                                </div>
+                                
+                                {/* Hidden container for clean printing */}
+                                <div className="hidden">
+                                    {batchTags.map(tag => (
+                                        <div key={tag.tag_id} className="flex flex-col items-center">
+                                            <img src={tag.url} alt={`Tag ${tag.tag_id}`} className="print-tag-img" />
+                                            <span className="text-[8px] text-black mt-1">ID {tag.tag_id} · {tag.size_mm}mm</span>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <button onClick={() => window.print()} className="w-full py-2 bg-miami-cyan text-black font-black rounded-xl text-xs uppercase tracking-widest no-print">
+                                    🖨 Print All Tags
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};

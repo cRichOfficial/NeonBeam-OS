@@ -9,6 +9,7 @@ import { MachineSettingsModule } from './views/MachineSettingsModule';
 import { AppSettingsModule } from './views/AppSettingsModule';
 import { MaterialPresetsModule } from './views/MaterialPresetsModule';
 import { GCodeStudioModule } from './views/GCodeStudioModule';
+import { LensModule } from './views/LensModule';
 
 // ── Core Module Registration ──────────────────────────────────────────────────
 ModuleRegistry.register({
@@ -26,6 +27,21 @@ ModuleRegistry.register({
         </svg>
     ),
     component: DashboardModule,
+    isCore: true,
+});
+
+ModuleRegistry.register({
+    id: 'lens',
+    title: 'NeonBeam Lens',
+    icon: (
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="8" y="12" width="32" height="24" rx="4" stroke="currentColor" strokeWidth="1.5" />
+            <circle cx="24" cy="24" r="6" stroke="currentColor" strokeWidth="1.5" />
+            <circle cx="34" cy="18" r="1.5" fill="currentColor" />
+            <path d="M16 12L19 8H29L32 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+    ),
+    component: LensModule,
     isCore: true,
 });
 
