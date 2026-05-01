@@ -4,13 +4,13 @@ import { useAppSettingsStore } from '../store/appSettingsStore';
 import { useJobOperationsStore } from '../store/jobOperationsStore';
 import { useNavigationStore } from '../store/navigationStore';
 import { NumericInput } from '../components/NumericInput';
-import type { DetectionResult, TransformResponse, CalibrationPoint } from '../types/lens';
+import type { DetectionResult, TransformResponse, CalibrationPoint, LensHealthResponse, LensSessionStatus, LensCalibrationResult } from '../types/lens';
 
 // Canvas dimensions (similar to StudioModule)
 const CW = 480, CH = 300, ML = 32, MB = 20;
 const DW = CW - ML, DH = CH - MB;
 
-type LensTab = 'align' | 'calibrate' | 'tags';
+type LensTab = 'align' | 'calibrate' | 'lens' | 'tags';
 
 export const LensModule: React.FC = () => {
     // ── Store Selectors ──
@@ -41,6 +41,13 @@ export const LensModule: React.FC = () => {
     const [tagDpi, setTagDpi] = useState(300);
     const [isBatch, setIsBatch] = useState(false);
     const [paperFormat, setPaperFormat] = useState<'letter' | 'a4'>('letter');
+
+    // ── Lens Calibration State ──
+    const [healthStatus, setHealthStatus] = useState<LensHealthResponse | null>(null);
+    const [lensSession, setLensSession] = useState<LensSessionStatus | null>(null);
+    const [lensResult, setLensResult] = useState<LensCalibrationResult | null>(null);
+    const [isLensLoading, setIsLensLoading] = useState(false);
+    const [lensPreviewKey, setLensPreviewKey] = useState(0);
 
     // ── Canvas Refs ──
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -152,11 +159,66 @@ export const LensModule: React.FC = () => {
         try {
             await lensService.calibrate(calibrationPoints);
             alert('Calibration successful!');
+            // Refresh health status after calibration
+            const h = await lensService.getHealthStatus();
+            if (h) setHealthStatus(h);
         } catch (err) {
             console.error('Calibration failed', err);
             alert('Calibration failed.');
         } finally {
             setIsCalibrating(false);
+        }
+    };
+
+    // ── Lens Calibration Handlers ──
+
+    const fetchHealthStatus = async () => {
+        const h = await lensService.getHealthStatus();
+        if (h) setHealthStatus(h);
+    };
+
+    useEffect(() => { fetchHealthStatus(); }, [lensApiUrl]);
+
+    const startLensSession = async () => {
+        setIsLensLoading(true);
+        setLensResult(null);
+        try {
+            const status = await lensService.lensCalibrationStart();
+            setLensSession(status);
+        } catch (err) {
+            console.error('Failed to start lens session', err);
+            alert('Failed to start lens calibration session.');
+        } finally {
+            setIsLensLoading(false);
+        }
+    };
+
+    const captureLensFrame = async () => {
+        setIsLensLoading(true);
+        try {
+            const status = await lensService.lensCalibrationCapture();
+            setLensSession(status);
+            setLensPreviewKey(k => k + 1);
+        } catch (err) {
+            console.error('Capture failed', err);
+        } finally {
+            setIsLensLoading(false);
+        }
+    };
+
+    const finishLensCalibration = async () => {
+        setIsLensLoading(true);
+        try {
+            const result = await lensService.lensCalibrationFinish();
+            setLensResult(result);
+            setLensSession(null);
+            // Refresh health to reflect new lens_calibrated status
+            await fetchHealthStatus();
+        } catch (err) {
+            console.error('Finish failed', err);
+            alert('Lens calibration computation failed.');
+        } finally {
+            setIsLensLoading(false);
         }
     };
 
@@ -293,7 +355,7 @@ export const LensModule: React.FC = () => {
                     <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest opacity-80">Vision-Aided Alignment System</p>
                 </div>
                 <div className="flex bg-black/60 p-1 rounded-xl border border-gray-800 self-start">
-                    {(['align', 'calibrate', 'tags'] as LensTab[]).map(tab => (
+                    {(['align', 'calibrate', 'lens', 'tags'] as LensTab[]).map(tab => (
                         <button key={tab} onClick={() => setActiveTab(tab)}
                             className={`px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-wider ${
                                 activeTab === tab 
@@ -482,6 +544,178 @@ export const LensModule: React.FC = () => {
                                 {isCalibrating ? 'SUBMITTING...' : 'UPDATE CALIBRATION'}
                             </button>
                         </div>
+                    </div>
+                )}
+
+                {/* ── LENS CALIBRATION TAB ── */}
+                {activeTab === 'lens' && (
+                    <div className="flex flex-col gap-4">
+                        {/* Status Banner */}
+                        {healthStatus && (
+                            <div className={`flex items-center gap-3 p-4 rounded-2xl border ${
+                                healthStatus.lens_calibrated 
+                                    ? 'bg-emerald-500/10 border-emerald-500/30' 
+                                    : 'bg-amber-500/10 border-amber-500/30'
+                            }`}>
+                                <div className={`w-3 h-3 rounded-full ${
+                                    healthStatus.lens_calibrated ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse'
+                                }`} />
+                                <div className="flex-1">
+                                    <span className={`text-xs font-black uppercase ${
+                                        healthStatus.lens_calibrated ? 'text-emerald-400' : 'text-amber-400'
+                                    }`}>
+                                        {healthStatus.lens_calibrated ? 'Lens Calibrated' : 'Lens Calibration Required'}
+                                    </span>
+                                    <p className="text-[10px] text-gray-400 mt-0.5">
+                                        {healthStatus.lens_calibrated 
+                                            ? 'Distortion correction is active. Re-calibrate only if you change the camera or lens.'
+                                            : 'Print a checkerboard and run the guided calibration to correct lens distortion.'}
+                                    </p>
+                                </div>
+                                {healthStatus.lens_calibrated && !healthStatus.homography_calibrated && (
+                                    <span className="text-[9px] text-amber-400 font-bold uppercase">Homography needed →</span>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Info + Checkerboard Download */}
+                        <div className="bg-black/40 border border-gray-800 rounded-2xl p-4 space-y-4">
+                            <h3 className="text-sm font-black text-miami-cyan uppercase">Lens Distortion Calibration</h3>
+                            <p className="text-xs text-gray-400 leading-relaxed">
+                                Print a checkerboard, hold it in front of the camera at various positions and angles. 
+                                The system computes your camera's intrinsic parameters to correct barrel distortion.
+                            </p>
+                            <div className="flex gap-3">
+                                <a 
+                                    href={lensService.getCheckerboardUrl()}
+                                    target="_blank" rel="noopener noreferrer"
+                                    className="flex-1 py-2.5 bg-miami-pink/20 text-miami-pink border border-miami-pink/30 font-black rounded-xl text-center text-[11px] uppercase tracking-widest hover:bg-miami-pink/30 transition-all"
+                                >
+                                    🖨 Download Checkerboard PDF
+                                </a>
+                            </div>
+                        </div>
+
+                        {/* Session Controls */}
+                        {!lensSession ? (
+                            <button 
+                                onClick={startLensSession} 
+                                disabled={isLensLoading}
+                                className="w-full py-3 bg-miami-cyan text-black font-black rounded-xl shadow-lg shadow-miami-cyan/20 disabled:opacity-30 text-sm uppercase tracking-widest"
+                            >
+                                {isLensLoading ? 'STARTING...' : 'START CALIBRATION SESSION'}
+                            </button>
+                        ) : (
+                            <div className="flex flex-col gap-4">
+                                {/* Progress */}
+                                <div className="bg-black/40 border border-gray-800 rounded-2xl p-4 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs font-black text-gray-400 uppercase tracking-widest">
+                                            Captures: {lensSession.captures_done} / {lensSession.total_target}
+                                        </span>
+                                        <span className={`text-[10px] font-bold uppercase ${
+                                            lensSession.can_finish ? 'text-emerald-400' : 'text-amber-400'
+                                        }`}>
+                                            {lensSession.can_finish ? '✓ Ready to finish' : `${Math.max(0, lensSession.total_target - lensSession.captures_done)} more needed`}
+                                        </span>
+                                    </div>
+
+                                    {/* Progress Bar */}
+                                    <div className="h-2 bg-black/60 rounded-full overflow-hidden">
+                                        <div 
+                                            className="h-full bg-gradient-to-r from-miami-cyan to-miami-purple rounded-full transition-all duration-500"
+                                            style={{ width: `${Math.min(100, (lensSession.captures_done / lensSession.total_target) * 100)}%` }}
+                                        />
+                                    </div>
+
+                                    {/* Zone Grid */}
+                                    <div className="grid grid-cols-3 gap-1">
+                                        {['top-left', 'top-center', 'top-right', 'center-left', 'center', 'center-right', 'bottom-left', 'bottom-center', 'bottom-right'].map(zone => (
+                                            <div key={zone} className={`h-8 rounded flex items-center justify-center text-[8px] font-bold uppercase tracking-tight transition-all ${
+                                                lensSession.zones_covered.includes(zone)
+                                                    ? 'bg-miami-cyan/20 text-miami-cyan border border-miami-cyan/30'
+                                                    : 'bg-black/40 text-gray-600 border border-gray-800'
+                                            }`}>
+                                                {lensSession.zones_covered.includes(zone) ? '✓' : zone.replace('-', '\n')}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Instruction */}
+                                {lensSession.instruction && (
+                                    <div className="bg-miami-cyan/5 border border-miami-cyan/20 rounded-2xl p-3">
+                                        <p className="text-xs text-miami-cyan font-medium leading-relaxed">
+                                            {lensSession.instruction}
+                                        </p>
+                                    </div>
+                                )}
+
+                                {/* Last capture result */}
+                                {lensSession.message && (
+                                    <div className={`text-[10px] font-bold px-3 py-2 rounded-xl ${
+                                        lensSession.success === false 
+                                            ? 'bg-red-500/10 text-red-400 border border-red-500/20' 
+                                            : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                    }`}>
+                                        {lensSession.message}
+                                    </div>
+                                )}
+
+                                {/* Preview Image */}
+                                <div className="bg-black rounded-2xl overflow-hidden border border-gray-800">
+                                    <img 
+                                        key={lensPreviewKey}
+                                        src={lensService.getLensPreviewUrl()} 
+                                        alt="Calibration Preview" 
+                                        className="w-full h-auto"
+                                        onError={(e) => (e.currentTarget.style.display = 'none')}
+                                    />
+                                </div>
+
+                                {/* Action Buttons */}
+                                <div className="flex gap-3">
+                                    <button 
+                                        onClick={captureLensFrame}
+                                        disabled={isLensLoading || lensSession.captures_done >= lensSession.max_captures}
+                                        className="flex-1 py-3 bg-miami-cyan text-black font-black rounded-xl shadow-lg shadow-miami-cyan/20 disabled:opacity-30 text-sm uppercase tracking-widest"
+                                    >
+                                        {isLensLoading ? 'CAPTURING...' : '📸 CAPTURE FRAME'}
+                                    </button>
+                                    <button 
+                                        onClick={finishLensCalibration}
+                                        disabled={isLensLoading || !lensSession.can_finish}
+                                        className="flex-1 py-3 bg-emerald-500 text-black font-black rounded-xl shadow-lg shadow-emerald-500/20 disabled:opacity-30 text-sm uppercase tracking-widest"
+                                    >
+                                        {isLensLoading ? 'COMPUTING...' : '✓ FINISH'}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Result */}
+                        {lensResult && (
+                            <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-4 space-y-2">
+                                <h4 className="text-sm font-black text-emerald-400 uppercase">Calibration Complete</h4>
+                                <div className="grid grid-cols-3 gap-3 text-center">
+                                    <div>
+                                        <div className="text-[9px] text-gray-500 uppercase">Model</div>
+                                        <div className="text-xs font-mono text-white">{lensResult.model}</div>
+                                    </div>
+                                    <div>
+                                        <div className="text-[9px] text-gray-500 uppercase">RMS Error</div>
+                                        <div className="text-xs font-mono text-white">{lensResult.rms_error.toFixed(4)}px</div>
+                                    </div>
+                                    <div>
+                                        <div className="text-[9px] text-gray-500 uppercase">Images</div>
+                                        <div className="text-xs font-mono text-white">{lensResult.captures_used}</div>
+                                    </div>
+                                </div>
+                                <p className="text-[10px] text-amber-400 font-bold mt-2">
+                                    ⚠ Now re-run AprilTag calibration (Calibrate tab) — undistortion changes pixel positions.
+                                </p>
+                            </div>
+                        )}
                     </div>
                 )}
 

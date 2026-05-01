@@ -5,7 +5,10 @@ import type {
     CalibrationRequest, 
     DetectionResult, 
     TransformRequest, 
-    TransformResponse 
+    TransformResponse,
+    LensHealthResponse,
+    LensSessionStatus,
+    LensCalibrationResult,
 } from '../types/lens';
 
 class LensService {
@@ -19,6 +22,15 @@ class LensService {
             return res.status === 200;
         } catch {
             return false;
+        }
+    }
+
+    async getHealthStatus(): Promise<LensHealthResponse | null> {
+        try {
+            const res = await axios.get<LensHealthResponse>(`${this.baseUrl}/api/health`);
+            return res.data;
+        } catch {
+            return null;
         }
     }
 
@@ -54,7 +66,6 @@ class LensService {
             if (params.design_file instanceof Blob) {
                 formData.append('design_file', params.design_file);
             } else {
-                // Assuming it's a base64 string or URL
                 formData.append('design_file', params.design_file);
             }
         }
@@ -83,6 +94,38 @@ class LensService {
             responseType: 'blob'
         });
         return res.data;
+    }
+
+    // ── Lens Distortion Calibration ──
+
+    getCheckerboardUrl(rows: number = 9, cols: number = 6, squareMm: number = 25, dpi: number = 300) {
+        return `${this.baseUrl}/api/lens/checkerboard/generate?rows=${rows}&cols=${cols}&square_mm=${squareMm}&dpi=${dpi}`;
+    }
+
+    async lensCalibrationStart(rows: number = 9, cols: number = 6, squareMm: number = 25): Promise<LensSessionStatus> {
+        const res = await axios.post(`${this.baseUrl}/api/lens/calibrate-lens/start`, null, {
+            params: { rows, cols, square_mm: squareMm }
+        });
+        return res.data;
+    }
+
+    async lensCalibrationCapture(): Promise<LensSessionStatus> {
+        const res = await axios.post(`${this.baseUrl}/api/lens/calibrate-lens/capture`);
+        return res.data;
+    }
+
+    async lensCalibrationFinish(): Promise<LensCalibrationResult> {
+        const res = await axios.post(`${this.baseUrl}/api/lens/calibrate-lens/finish`);
+        return res.data;
+    }
+
+    async lensCalibrationStatus(): Promise<LensSessionStatus> {
+        const res = await axios.get(`${this.baseUrl}/api/lens/calibrate-lens/status`);
+        return res.data;
+    }
+
+    getLensPreviewUrl() {
+        return `${this.baseUrl}/api/lens/calibrate-lens/preview?t=${Date.now()}`;
     }
 }
 
