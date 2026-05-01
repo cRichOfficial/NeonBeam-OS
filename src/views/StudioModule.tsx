@@ -102,6 +102,10 @@ export const StudioModule: React.FC = () => {
     const [expandedOpId, setExpandedOpId] = useState<string | null>(null);
     // Pending new-op type when user clicks 'Add Operation'
     const [pendingOpType, setPendingOpType] = useState<LayerOp>('cut');
+    
+    // Upload state
+    const [isUploading, setIsUploading] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState(0);
 
     // ── Operation parameters (always visible when file loaded) ──
     // opRate is ALWAYS stored in mm/min — the native GCode unit.
@@ -689,9 +693,16 @@ export const StudioModule: React.FC = () => {
         const form = new FormData();
         form.append('file', file);
 
+        setIsUploading(true);
+        setUploadProgress(0);
+
         try {
             const res = await axios.post(`${coreApiUrl}/api/gcode/upload`, form, {
                 headers: { 'Content-Type': 'multipart/form-data' },
+                onUploadProgress: (progressEvent) => {
+                    const percentCompleted = Math.round((progressEvent.loaded * 100) / (progressEvent.total || 1));
+                    setUploadProgress(percentCompleted);
+                }
             });
             const status = res.data.status;
             if (status === 'queued' || status === 'streaming_started') {
@@ -711,6 +722,9 @@ export const StudioModule: React.FC = () => {
             }
         } catch {
             alert('Could not reach NeonBeam Core. Is the hardware bridge running?');
+        } finally {
+            setIsUploading(false);
+            setUploadProgress(0);
         }
     }, [coreApiUrl, gcodeText, fileName, navigateTo, setJobStatus]);
 
@@ -1312,10 +1326,20 @@ export const StudioModule: React.FC = () => {
                                 className="py-3 bg-black border border-gray-700 hover:border-miami-cyan text-gray-300 hover:text-miami-cyan font-black rounded-xl text-sm transition-all">
                                 💾 Save .nc
                             </button>
-                            <button onClick={sendToMachine}
-                                className="py-3 bg-gradient-to-r from-miami-cyan to-miami-purple text-black font-black rounded-xl text-sm shadow-[0_0_12px_rgba(0,240,255,0.2)] hover:shadow-[0_0_20px_rgba(0,240,255,0.4)] transition-all">
-                                📡 Send to Machine
-                            </button>
+                            {isUploading ? (
+                                <div className="py-3 bg-black border border-miami-cyan text-miami-cyan font-black rounded-xl text-sm transition-all text-center flex flex-col justify-center relative overflow-hidden">
+                                    <div className="absolute left-0 top-0 bottom-0 bg-miami-cyan/20 transition-all" style={{ width: `${uploadProgress}%` }} />
+                                    <span className="relative z-10 flex justify-center items-center gap-2">
+                                        <div className="w-3 h-3 rounded-full border-2 border-miami-cyan border-t-transparent animate-spin" />
+                                        {uploadProgress}%
+                                    </span>
+                                </div>
+                            ) : (
+                                <button onClick={sendToMachine}
+                                    className="py-3 bg-gradient-to-r from-miami-cyan to-miami-purple text-black font-black rounded-xl text-sm shadow-[0_0_12px_rgba(0,240,255,0.2)] hover:shadow-[0_0_20px_rgba(0,240,255,0.4)] transition-all">
+                                    📡 Send to Machine
+                                </button>
+                            )}
                         </div>
                     )}
 

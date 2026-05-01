@@ -105,6 +105,8 @@ export const DashboardModule: React.FC = () => {
     const maxSpindleS  = useAppSettingsStore(s => s.settings.maxSpindleS) || 1000;
     const homingOffsetX = useAppSettingsStore(s => s.settings.homingOffsetX);
     const homingOffsetY = useAppSettingsStore(s => s.settings.homingOffsetY);
+    const laserTestPower = useAppSettingsStore(s => s.settings.laserTestPower);
+    const laserTestDuration = useAppSettingsStore(s => s.settings.laserTestDuration);
     const jobStatus    = useJobStore(s => s.jobStatus);
     const setJobStatus = useJobStore(s => s.setJobStatus);
 
@@ -121,6 +123,7 @@ export const DashboardModule: React.FC = () => {
     const [liveJogLoading, setLiveJogLoading] = useState(false);
     const [jogError,       setJogError]       = useState<string | null>(null);
     const [showOverflow,   setShowOverflow]   = useState(false);
+    const [isTestingLaser, setIsTestingLaser] = useState(false);
 
     // ── On mount & resume: sync settings and recover any in-progress job ──────
     useEffect(() => {
@@ -258,6 +261,21 @@ export const DashboardModule: React.FC = () => {
     const softReset = () => sendCommand('\x18');
     const unlock    = () => sendCommand('$X');
 
+    const testLaser = useCallback(async () => {
+        if (!canJog || isTestingLaser) return;
+        setIsTestingLaser(true);
+        const sVal = Math.round((laserTestPower / 100) * maxSpindleS);
+        const durationSec = (laserTestDuration / 1000).toFixed(3);
+        
+        try {
+            await sendCommand(`M3 S${sVal}`);
+            await sendCommand(`G4 P${durationSec}`);
+            await sendCommand(`M5`);
+        } finally {
+            setTimeout(() => setIsTestingLaser(false), Math.max(laserTestDuration, 200));
+        }
+    }, [canJog, laserTestPower, maxSpindleS, laserTestDuration, isTestingLaser]);
+
     const cycleStartOrBegin = useCallback(async () => {
         if (jobStatus?.is_queued) {
             await axios.post(`${coreApiUrl}/api/gcode/start`).catch(() => {});
@@ -378,20 +396,38 @@ export const DashboardModule: React.FC = () => {
                         )}
                     </div>
 
-                    {/* Live-jog toggle pill */}
-                    <button
-                        onClick={toggleLiveJog}
-                        disabled={liveJogLoading}
-                        title={liveJogEnabled ? 'Disable live jog during job?' : 'Allow jogging while job runs?'}
-                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-black transition-all ${
-                            liveJogEnabled
-                                ? 'bg-miami-pink/15 border-miami-pink/50 text-miami-pink'
-                                : 'bg-black/60 border-gray-700 text-gray-500 hover:border-gray-500'
-                        } ${liveJogLoading ? 'opacity-50 cursor-wait' : ''}`}
-                    >
-                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${liveJogEnabled ? 'bg-miami-pink shadow-[0_0_6px_rgba(255,0,127,0.8)]' : 'bg-gray-700'}`} />
-                        Live Jog
-                    </button>
+                    <div className="flex gap-2 items-center">
+                        {/* Test Laser Button */}
+                        <button
+                            onClick={testLaser}
+                            disabled={!canJog || isTestingLaser}
+                            title={`Fire laser at ${laserTestPower}% for ${laserTestDuration}ms`}
+                            className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-black transition-all active:scale-95 ${
+                                !canJog
+                                    ? 'bg-black/60 border-gray-700 text-gray-500 cursor-not-allowed'
+                                    : isTestingLaser
+                                        ? 'bg-red-500 border-red-500 text-white shadow-[0_0_15px_rgba(239,68,68,0.6)] scale-95'
+                                        : 'bg-red-500/10 border-red-500/50 text-red-400 hover:bg-red-500/20 shadow-[0_0_8px_rgba(239,68,68,0.2)]'
+                            }`}
+                        >
+                            💥 {isTestingLaser ? 'FIRING...' : 'Test Laser'}
+                        </button>
+
+                        {/* Live-jog toggle pill */}
+                        <button
+                            onClick={toggleLiveJog}
+                            disabled={liveJogLoading}
+                            title={liveJogEnabled ? 'Disable live jog during job?' : 'Allow jogging while job runs?'}
+                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-black transition-all ${
+                                liveJogEnabled
+                                    ? 'bg-miami-pink/15 border-miami-pink/50 text-miami-pink'
+                                    : 'bg-black/60 border-gray-700 text-gray-500 hover:border-gray-500'
+                            } ${liveJogLoading ? 'opacity-50 cursor-wait' : ''}`}
+                        >
+                            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${liveJogEnabled ? 'bg-miami-pink shadow-[0_0_6px_rgba(255,0,127,0.8)]' : 'bg-gray-700'}`} />
+                            Live Jog
+                        </button>
+                    </div>
                 </div>
 
                 {/* Step size buttons */}

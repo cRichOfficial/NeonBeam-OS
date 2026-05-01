@@ -267,6 +267,22 @@ export const AppSettingsModule: React.FC = () => {
                     </div>
                 </div>
 
+                {/* ── Laser Configuration ──────────────────────────────────── */}
+                <div className="bg-black/40 border border-gray-800 rounded-xl p-5 shadow-lg">
+                    <h3 className="text-gray-300 text-xs uppercase font-bold tracking-widest mb-4">Laser Configuration</h3>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-[10px] uppercase text-gray-300 mb-1">Test Power (%)</label>
+                            <NumericInput value={settings.laserTestPower} onChange={val => updateSettings({ laserTestPower: val })} min={1} max={100} className="w-full bg-black/60 border border-gray-700 focus:border-miami-cyan rounded-lg p-2 text-white font-mono outline-none" />
+                        </div>
+                        <div>
+                            <label className="block text-[10px] uppercase text-gray-300 mb-1">Test Duration (ms)</label>
+                            <NumericInput value={settings.laserTestDuration} onChange={val => updateSettings({ laserTestDuration: val })} min={1} className="w-full bg-black/60 border border-gray-700 focus:border-miami-cyan rounded-lg p-2 text-white font-mono outline-none" />
+                        </div>
+                    </div>
+                </div>
+
                 {/* ── Network Bridge ───────────────────────────────────────── */}
                 <div className="bg-black/40 border border-gray-800 rounded-xl p-5 shadow-lg">
                     <div className="flex items-center justify-between mb-4">

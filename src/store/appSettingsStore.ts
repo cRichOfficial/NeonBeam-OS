@@ -23,6 +23,8 @@ export interface AppSettings {
     svgDpi: number;
     bitmapDpi: number;
     maxSpindleS: number;    // mirrors $30 firmware setting — laser S scale (default 1000)
+    laserTestPower: number;
+    laserTestDuration: number;
 
     // Network — runtime-editable, persisted to localStorage
     coreApiUrl: string;
@@ -55,6 +57,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     svgDpi: 96,
     bitmapDpi: 96,
     maxSpindleS: 1000,      // matches grblHAL $30 default — change if your firmware differs
+    laserTestPower: 5,
+    laserTestDuration: 20,
 
     // Default backend URLs from environment variables (baked in at build time)
     // or empty strings if not provided.

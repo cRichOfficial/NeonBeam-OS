@@ -22,6 +22,7 @@ const sidecarUrl = process.env.DISCOVERY_SIDECAR_URL ?? 'http://127.0.0.1:3001';
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
+    allowedHosts: true,
     watch: {
       usePolling: true,
     },
