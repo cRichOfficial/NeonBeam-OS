@@ -10,7 +10,13 @@ import type { DetectionResult, TransformResponse, CalibrationPoint, LensHealthRe
 const CW = 480, CH = 300, ML = 32, MB = 20;
 const DW = CW - ML, DH = CH - MB;
 
-type LensTab = 'align' | 'calibrate' | 'lens' | 'tags';
+type LensTab = 'align' | 'optics' | 'mapping' | 'tags';
+const TAB_LABELS: Record<LensTab, string> = {
+    align: 'Align',
+    optics: 'Optics',
+    mapping: 'Mapping',
+    tags: 'Tags',
+};
 
 export const LensModule: React.FC = () => {
     // ── Store Selectors ──
@@ -332,7 +338,7 @@ export const LensModule: React.FC = () => {
         }
 
         // 7. Calibration Points (Calibrate Tab)
-        if (activeTab === 'calibrate' && Array.isArray(calibrationPoints)) {
+        if (activeTab === 'mapping' && Array.isArray(calibrationPoints)) {
             calibrationPoints.forEach(p => {
                 const px = ML + p.physical_x * scX;
                 const py = plotH - p.physical_y * scY;
@@ -354,15 +360,64 @@ export const LensModule: React.FC = () => {
                     <h2 className="text-3xl font-black text-miami-cyan tracking-tight leading-none mb-1">NeonBeam Lens</h2>
                     <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest opacity-80">Vision-Aided Alignment System</p>
                 </div>
+
+                {/* Calibration Status Banner (always visible) */}
+                {healthStatus && (() => {
+                    // Mapping is only valid if optics is also done — a homography
+                    // computed on distorted pixels is effectively invalid.
+                    const opticsOk = healthStatus.lens_calibrated;
+                    const mappingOk = opticsOk && healthStatus.homography_calibrated;
+                    const allGood = opticsOk && mappingOk;
+                    return (
+                    <div className={`flex items-center gap-3 p-3 rounded-xl border ${
+                        allGood
+                            ? 'bg-emerald-500/10 border-emerald-500/30'
+                            : 'bg-amber-500/10 border-amber-500/30'
+                    }`}>
+                        <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+                            allGood ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse'
+                        }`} />
+                        <div className="flex-1 flex items-center gap-4">
+                            <div className="flex items-center gap-1.5">
+                                <span className={`text-[10px] font-black uppercase ${
+                                    opticsOk ? 'text-emerald-400' : 'text-amber-400'
+                                }`}>
+                                    Optics {opticsOk ? '✓' : '✗'}
+                                </span>
+                            </div>
+                            <div className="w-px h-3 bg-gray-700" />
+                            <div className="flex items-center gap-1.5">
+                                <span className={`text-[10px] font-black uppercase ${
+                                    mappingOk ? 'text-emerald-400' : 'text-amber-400'
+                                }`}>
+                                    Mapping {mappingOk ? '✓' : '✗'}
+                                </span>
+                            </div>
+                            {!allGood && (
+                                <>
+                                    <div className="w-px h-3 bg-gray-700" />
+                                    <button 
+                                        onClick={() => setActiveTab(!opticsOk ? 'optics' : 'mapping')}
+                                        className="text-[9px] text-amber-400 font-bold uppercase hover:underline"
+                                    >
+                                        Setup →
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                    );
+                })()}
+
                 <div className="flex bg-black/60 p-1 rounded-xl border border-gray-800 self-start">
-                    {(['align', 'calibrate', 'lens', 'tags'] as LensTab[]).map(tab => (
+                    {(['align', 'optics', 'mapping', 'tags'] as LensTab[]).map(tab => (
                         <button key={tab} onClick={() => setActiveTab(tab)}
                             className={`px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-wider ${
                                 activeTab === tab 
                                     ? 'bg-miami-cyan text-black shadow-[0_0_12px_rgba(0,240,255,0.3)]' 
                                     : 'text-gray-500 hover:text-gray-300'
                             }`}>
-                            {tab}
+                            {TAB_LABELS[tab]}
                         </button>
                     ))}
                 </div>
@@ -432,8 +487,8 @@ export const LensModule: React.FC = () => {
                     </>
                 )}
 
-                {/* ── CALIBRATE TAB ── */}
-                {activeTab === 'calibrate' && (
+                {/* ── MAPPING TAB (AprilTag Homography) ── */}
+                {activeTab === 'mapping' && (
                     <div className="flex flex-col gap-4">
                         <div className="bg-miami-cyan/10 border border-miami-cyan/20 rounded-2xl p-4">
                             <h3 className="text-sm font-black text-miami-cyan uppercase mb-1">Machine Calibration</h3>
@@ -547,37 +602,9 @@ export const LensModule: React.FC = () => {
                     </div>
                 )}
 
-                {/* ── LENS CALIBRATION TAB ── */}
-                {activeTab === 'lens' && (
+                {/* ── OPTICS TAB (Lens Distortion Calibration) ── */}
+                {activeTab === 'optics' && (
                     <div className="flex flex-col gap-4">
-                        {/* Status Banner */}
-                        {healthStatus && (
-                            <div className={`flex items-center gap-3 p-4 rounded-2xl border ${
-                                healthStatus.lens_calibrated 
-                                    ? 'bg-emerald-500/10 border-emerald-500/30' 
-                                    : 'bg-amber-500/10 border-amber-500/30'
-                            }`}>
-                                <div className={`w-3 h-3 rounded-full ${
-                                    healthStatus.lens_calibrated ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse'
-                                }`} />
-                                <div className="flex-1">
-                                    <span className={`text-xs font-black uppercase ${
-                                        healthStatus.lens_calibrated ? 'text-emerald-400' : 'text-amber-400'
-                                    }`}>
-                                        {healthStatus.lens_calibrated ? 'Lens Calibrated' : 'Lens Calibration Required'}
-                                    </span>
-                                    <p className="text-[10px] text-gray-400 mt-0.5">
-                                        {healthStatus.lens_calibrated 
-                                            ? 'Distortion correction is active. Re-calibrate only if you change the camera or lens.'
-                                            : 'Print a checkerboard and run the guided calibration to correct lens distortion.'}
-                                    </p>
-                                </div>
-                                {healthStatus.lens_calibrated && !healthStatus.homography_calibrated && (
-                                    <span className="text-[9px] text-amber-400 font-bold uppercase">Homography needed →</span>
-                                )}
-                            </div>
-                        )}
-
                         {/* Info + Checkerboard Download */}
                         <div className="bg-black/40 border border-gray-800 rounded-2xl p-4 space-y-4">
                             <h3 className="text-sm font-black text-miami-cyan uppercase">Lens Distortion Calibration</h3>
