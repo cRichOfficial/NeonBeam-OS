@@ -90,7 +90,7 @@ export const StudioModule: React.FC = () => {
 
     const { svgPaths, operations, selectedPathIds, 
             posX, posY, scalePct, rotation,
-            setSvgPaths, togglePathSelect, addFromSelection,
+            setSvgPaths, togglePathSelect, addOperation, addFromSelection,
             updateOperation, updateParams, removeOperation,
             moveOp, removePathFromOp, clearAll: clearOps,
             setDesign, setPlacement } = useJobOperationsStore();
@@ -101,77 +101,23 @@ export const StudioModule: React.FC = () => {
     const [ditherMethod, setDitherMethod] = useState<DitherMethod>('floyd-steinberg');
     const [dpi, setDpi]             = useState(() => svgDpi);
     const [selectedPreset, setSelectedPreset] = useState('');
-    // Per-operation UI state: which op accordion is expanded
-    const [expandedOpId, setExpandedOpId] = useState<string | null>(null);
-    // Pending new-op type when user clicks 'Add Operation'
-    const [pendingOpType, setPendingOpType] = useState<LayerOp>('cut');
+
+    // ── Operation Wizard State ──
+    const [wizardOpen, setWizardOpen] = useState(false);
+    const [wizardStep, setWizardStep] = useState(1);
+    const [editingOpId, setEditingOpId] = useState<string | null>(null);
+    const [draftOp, setDraftOp] = useState<Partial<JobOperation>>({});
     
     // Upload state
     const [isUploading, setIsUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
 
-    // ── Operation parameters (always visible when file loaded) ──
-    // opRate is ALWAYS stored in mm/min — the native GCode unit.
-    // The UI shows/accepts values in feedUnits and converts on the way in/out.
-    const [opPower,        setOpPower]        = useState(1000);
-    const [opMinPower,     setOpMinPower]     = useState(0);      // raster only — lower S bound
-    const [opRate,         setOpRate]         = useState(1500);   // mm/min internally
-
-    // ── Dual range slider refs (raster power min/max) ──
-    // Using a custom pointer-driven approach instead of two stacked <input type="range">
-    // because the top input always captures the full track width, making the bottom
-    // input's thumb unreachable.
-    const dualRangeRef  = useRef<HTMLDivElement>(null);
-    const dualDragging  = useRef<'min' | 'max' | null>(null);
-    // Keep latest state values in refs so event handlers don't close over stale values.
-    const opMinPowerRef = useRef(opMinPower);
-    const opPowerRef    = useRef(opPower);
-    useEffect(() => { opMinPowerRef.current = opMinPower; }, [opMinPower]);
-    useEffect(() => { opPowerRef.current    = opPower;    }, [opPower]);
-
-
-    // Converts a raw S value (0–maxSpindleS) to a rounded integer percentage string.
-    const sPct = (s: number) => `${Math.round((s / maxSpindleS) * 100)}%`;
-
-    const onDualDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        const v = Math.round(Math.max(0, Math.min(1, (e.clientX - dualRangeRef.current!.getBoundingClientRect().left) / dualRangeRef.current!.getBoundingClientRect().width)) * maxSpindleS);
-        dualDragging.current = Math.abs(v - opMinPowerRef.current) <= Math.abs(v - opPowerRef.current)
-            ? 'min' : 'max';
-        (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
-    }, [maxSpindleS]);
-
-    const onDualMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-        if (!dualDragging.current || !dualRangeRef.current) return;
-        const rect = dualRangeRef.current.getBoundingClientRect();
-        const v = Math.round(Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)) * maxSpindleS);
-        if (dualDragging.current === 'min') {
-            setOpMinPower(Math.max(0, Math.min(v, opPowerRef.current - Math.round(maxSpindleS * 0.01))));
-        } else {
-            setOpPower(Math.max(opMinPowerRef.current + Math.round(maxSpindleS * 0.01), Math.min(v, maxSpindleS)));
-        }
-    }, [maxSpindleS]);
-
-    const onDualUp = useCallback(() => { dualDragging.current = null; }, []);
-
-    const [opPasses,       setOpPasses]       = useState(1);
-    const [opAirAssist,    setOpAirAssist]    = useState(false);
-    const [opLineDistance, setOpLineDistance] = useState(0.1);
-    const [opLineAngle,    setOpLineAngle]    = useState(0);
-    const [opMargin,       setOpMargin]       = useState(0);
-
-    // Normalise feedUnits: guard against undefined / unexpected values from old
-    // localStorage state.  If it is not exactly 'mm/s', treat as 'mm/min'.
-    // This closes the silent-failure mode: label says 'mm/s', store returns
-    // undefined → comparison fails → no ×60 → F80 in GCode → machine hits
-    // 80 mm/min ≈ 1.3 mm/s instead of the intended 80 mm/s (4800 mm/min).
     const isMmPerSec = feedUnits === 'mm/s';
+    const sPct = (s: number) => `${Math.round((s / maxSpindleS) * 100)}%`;
 
     // Convert opRate (mm/min — the GCode native unit) ↔ display unit
     const toDisplay      = (mmPerMin: number) => isMmPerSec ? +(mmPerMin / 60).toFixed(2) : mmPerMin;
     const toMmPerMin     = (val: number)      => isMmPerSec ? Math.round(val * 60)        : val;
-    const displayRate     = toDisplay(opRate);
-    const setDisplayRate  = (val: number)     => setOpRate(toMmPerMin(val));
     const displayRateUnit = isMmPerSec ? 'mm/s' : 'mm/min';
 
 
@@ -1000,16 +946,6 @@ export const StudioModule: React.FC = () => {
         }
     }, [svgDpi, bitmapDpi, bumpRender]);
 
-    // ── Apply preset (pre-fills op params; doesn't hide them) ──
-    // Presets store rate in mm/min; setOpRate stores mm/min. No conversion needed here.
-    const applyPreset = useCallback((presetId: string) => {
-        setSelectedPreset(presetId);
-        const p = presets.find(x => x.id === presetId);
-        if (!p) return;
-        setOpPower(p.power); setOpMinPower(0); setOpRate(p.rate); setOpPasses(p.passes);
-        setOpAirAssist(p.airAssist); setOpLineDistance(p.lineDistance);
-        setOpLineAngle(p.lineAngle); setOpMargin(p.margin);
-    }, [presets]);
 
     // ── Preset filter (by file type) ──
     const filteredPresets = presets.filter(p => {
@@ -1021,12 +957,16 @@ export const StudioModule: React.FC = () => {
         return p.opType === 'Cut' || p.opType === 'Score';
     });
 
-    // ── Show line distance/angle for fill op or bitmap ──
-    const showLineParams = fileKind === 'bitmap' || operations.some(o => o.opType === 'fill');
 
-    // ── GCode generation ──
     const generateGCode = useCallback(async () => {
         if (!fileKind || !designImgRef.current) return;
+        
+        // Ensure we have at least one operation
+        if (operations.length === 0) {
+            alert('Add at least one laser operation before generating GCode.');
+            return;
+        }
+
         setIsGenerating(true);
 
         try {
@@ -1034,22 +974,17 @@ export const StudioModule: React.FC = () => {
             await new Promise(r => setTimeout(r, 100));
 
             const { w: widthMm, h: heightMm } = physSize();
-            let gcode = '';
-
-            if (fileKind === 'svg' && svgTextRef.current) {
-                if (operations.length === 0) {
-                    alert('Add at least one laser operation in the SVG Paths panel before generating GCode.');
-                    return;
-                }
-                gcode = generateMultiOpGCode({ svgText: svgTextRef.current, operations, posX, posY, widthMm, heightMm, rotation });
-            } else if (fileKind === 'bitmap' && (ditheredRef.current || srcCanvasRef.current)) {
-                const canvas = ditheredRef.current ?? srcCanvasRef.current!;
-                const params = {
-                    power: opPower, minPower: opMinPower, rate: opRate, passes: opPasses, airAssist: opAirAssist,
-                    margin: opMargin, lineDistance: opLineDistance, lineAngle: opLineAngle,
-                };
-                gcode = generateRasterGCode({ ditheredCanvas: canvas, posX, posY, widthMm, heightMm, ditherMethod, params, rotation });
-            }
+            
+            const gcode = generateMultiOpGCode({
+                svgText: svgTextRef.current || '',
+                operations,
+                posX,
+                posY,
+                widthMm,
+                heightMm,
+                rotation,
+                rasterCanvas: ditheredRef.current || srcCanvasRef.current || undefined
+            });
 
             if (!gcode) return;
 
@@ -1064,7 +999,7 @@ export const StudioModule: React.FC = () => {
             setIsGenerating(false);
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [fileKind, posX, posY, scalePct, rotation, dpi, operations, ditherMethod, opPower, opRate, opPasses, opAirAssist, opMargin, opLineDistance, opLineAngle]);
+    }, [fileKind, posX, posY, scalePct, rotation, dpi, operations, ditherMethod]);
 
     // ── Save GCode ──
     const saveGCode = useCallback(() => {
@@ -1170,9 +1105,283 @@ export const StudioModule: React.FC = () => {
 
     const { w: physW, h: physH, units: physUnits } = physSize();
 
+    // ── Operation Wizard Helpers ──
+    const openWizard = (op?: JobOperation) => {
+        if (op) {
+            setEditingOpId(op.id);
+            setDraftOp({ ...op });
+            // For SVG, allow re-selecting paths. For Raster, go straight to settings.
+            setWizardStep(op.opType === 'raster' ? 3 : 2);
+        } else {
+            setEditingOpId(null);
+            const defaultType = fileKind === 'bitmap' ? 'raster' : 'cut';
+            setDraftOp({
+                opType: defaultType,
+                pathIds: [],
+                name: '',
+                params: {
+                    power: 850, minPower: 0, rate: 1500, passes: 1,
+                    airAssist: false, margin: 0, lineDistance: 0.1, lineAngle: 0
+                }
+            });
+            // If bitmap, only one type exists, so skip step 1
+            setWizardStep(fileKind === 'bitmap' ? 3 : 1);
+        }
+        setWizardOpen(true);
+    };
+
+    const saveWizard = () => {
+        if (!draftOp.opType) return;
+        if (draftOp.opType !== 'raster' && (!draftOp.pathIds || draftOp.pathIds.length === 0)) {
+            alert('Please select at least one path.');
+            return;
+        }
+
+        const finalOp = {
+            ...draftOp,
+            name: draftOp.name || `${draftOp.opType.charAt(0).toUpperCase() + draftOp.opType.slice(1)} ${operations.length + 1}`
+        } as JobOperation;
+
+        if (editingOpId) {
+            updateOperation(editingOpId, finalOp);
+        } else {
+            addOperation(finalOp);
+        }
+        setWizardOpen(false);
+    };
+
     // ── Render ────────────────────────────────────────────────────────────────
     return (
         <div className="flex flex-col h-full bg-black/10">
+            
+            {/* ── OPERATION WIZARD MODAL ── */}
+            {wizardOpen && (
+                <div className="fixed inset-0 z-[300] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+                    <div className="w-full max-w-lg bg-[#0c0c14] border-t sm:border border-gray-800 rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in slide-in-from-bottom duration-300">
+                        {/* Header */}
+                        <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between bg-black/40">
+                            <div>
+                                <h3 className="text-miami-cyan font-black text-sm uppercase tracking-widest">
+                                    {editingOpId ? 'Edit Operation' : 'New Operation'}
+                                </h3>
+                                <div className="flex gap-1 mt-1">
+                                    {[1, 2, 3].map(s => (
+                                        <div key={s} className={`h-1 w-8 rounded-full transition-colors ${wizardStep >= s ? 'bg-miami-cyan' : 'bg-gray-800'}`} />
+                                    ))}
+                                </div>
+                            </div>
+                            <button onClick={() => setWizardOpen(false)} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-900 text-gray-500 hover:text-white transition-colors">✕</button>
+                        </div>
+
+                        {/* Step Content */}
+                        <div className="flex-1 overflow-y-auto p-6">
+                            
+                            {/* STEP 1: TYPE SELECTION */}
+                            {wizardStep === 1 && (
+                                <div className="space-y-4">
+                                    <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest mb-4">Select Operation Type</p>
+                                    <div className="grid grid-cols-1 gap-3">
+                                        {(fileKind === 'svg' ? (['cut', 'fill'] as LayerOp[]) : (['raster'] as LayerOp[])).map(type => (
+                                            <button 
+                                                key={type}
+                                                onClick={() => { setDraftOp({ ...draftOp, opType: type }); setWizardStep(type === 'raster' ? 3 : 2); }}
+                                                className={`p-4 rounded-2xl border-2 text-left transition-all flex items-center gap-4 ${
+                                                    draftOp.opType === type 
+                                                        ? 'bg-miami-cyan/10 border-miami-cyan shadow-[0_0_15px_rgba(0,240,255,0.1)]' 
+                                                        : 'bg-black/40 border-gray-800 hover:border-gray-600'
+                                                }`}
+                                            >
+                                                <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl ${
+                                                    type === 'cut' ? 'bg-miami-pink/20 text-miami-pink' : 
+                                                    type === 'fill' ? 'bg-miami-purple/20 text-miami-purple' : 
+                                                    'bg-miami-cyan/20 text-miami-cyan'
+                                                }`}>
+                                                    {type === 'cut' ? '✂' : type === 'fill' ? '▧' : '🖼️'}
+                                                </div>
+                                                <div>
+                                                    <span className="block font-black text-white capitalize">{type}</span>
+                                                    <span className="block text-[10px] text-gray-500 mt-0.5">
+                                                        {type === 'cut' ? 'Trace paths with laser' : 
+                                                         type === 'fill' ? 'Fill enclosed areas with hatch' : 
+                                                         'Engrave bitmap image'}
+                                                    </span>
+                                                </div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* STEP 2: SOURCE SELECTION (SVG Only) */}
+                            {wizardStep === 2 && (
+                                <div className="space-y-4">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">Select Paths ({draftOp.pathIds?.length || 0})</p>
+                                        <div className="flex gap-2">
+                                            <button onClick={() => setDraftOp({ ...draftOp, pathIds: svgPaths.map(p => p.id) })} className="text-[9px] text-miami-cyan font-bold uppercase">All</button>
+                                            <button onClick={() => setDraftOp({ ...draftOp, pathIds: [] })} className="text-[9px] text-gray-600 font-bold uppercase">None</button>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-1 gap-2 max-h-[40vh] overflow-y-auto pr-2">
+                                        {svgPaths.map(path => {
+                                            const isSelected = draftOp.pathIds?.includes(path.id);
+                                            return (
+                                                <button key={path.id} 
+                                                    onClick={() => {
+                                                        const ids = draftOp.pathIds || [];
+                                                        setDraftOp({ ...draftOp, pathIds: isSelected ? ids.filter(x => x !== path.id) : [...ids, path.id] });
+                                                    }}
+                                                    className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-all ${
+                                                        isSelected ? 'bg-miami-cyan/10 border-miami-cyan/50' : 'bg-black/20 border-gray-800'
+                                                    }`}
+                                                >
+                                                    <div className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center ${isSelected ? 'bg-miami-cyan border-miami-cyan text-black' : 'border-gray-700'}`}>
+                                                        {isSelected && <span className="text-[10px]">✓</span>}
+                                                    </div>
+                                                    <div className="flex flex-col min-w-0">
+                                                        <span className="text-xs text-white font-bold truncate">{path.label}</span>
+                                                        <div className="flex gap-1 mt-1">
+                                                            {path.strokeColor && <div className="w-2 h-2 rounded-full" style={{ background: path.strokeColor }} />}
+                                                            {path.fillColor && <div className="w-2 h-2 rounded-full border border-white/20" style={{ background: path.fillColor }} />}
+                                                        </div>
+                                                    </div>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* STEP 3: SETTINGS */}
+                            {wizardStep === 3 && (
+                                <div className="space-y-6">
+                                    <div className="bg-black/40 border border-gray-800 rounded-2xl p-4 space-y-4">
+                                        <div className="flex items-center justify-between">
+                                            <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">Laser Settings</p>
+                                            <select 
+                                                value={''} 
+                                                onChange={e => {
+                                                    const p = presets.find(x => x.id === e.target.value);
+                                                    if (p && draftOp.params) {
+                                                        setDraftOp({ ...draftOp, params: { ...draftOp.params, power: p.power, rate: p.rate, passes: p.passes, airAssist: p.airAssist, lineDistance: p.lineDistance } });
+                                                    }
+                                                }}
+                                                className="bg-black border border-gray-700 rounded-lg px-2 py-1 text-[10px] text-gray-400 outline-none"
+                                            >
+                                                <option value="">Apply Preset…</option>
+                                                {filteredPresets.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                            </select>
+                                        </div>
+
+                                        {/* Power */}
+                                        <div>
+                                            <div className="flex justify-between mb-2">
+                                                <label className="text-[10px] text-gray-400 uppercase font-bold">Power</label>
+                                                <span className="text-xs font-black text-miami-pink font-mono">{sPct(draftOp.params?.power || 0)}</span>
+                                            </div>
+                                            <input type="range" min={0} max={maxSpindleS} value={draftOp.params?.power || 0}
+                                                onChange={e => setDraftOp({ ...draftOp, params: { ...draftOp.params!, power: Number(e.target.value) } })}
+                                                className="w-full accent-miami-pink" />
+                                        </div>
+
+                                        {/* Min Power for Raster */}
+                                        {draftOp.opType === 'raster' && (
+                                            <div>
+                                                <div className="flex justify-between mb-2">
+                                                    <label className="text-[10px] text-gray-400 uppercase font-bold">Min Power (Shadows)</label>
+                                                    <span className="text-xs font-black text-miami-purple font-mono">{sPct(draftOp.params?.minPower || 0)}</span>
+                                                </div>
+                                                <input type="range" min={0} max={maxSpindleS} value={draftOp.params?.minPower || 0}
+                                                    onChange={e => setDraftOp({ ...draftOp, params: { ...draftOp.params!, minPower: Number(e.target.value) } })}
+                                                    className="w-full accent-miami-purple" />
+                                            </div>
+                                        )}
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-[10px] text-gray-400 mb-2 uppercase font-bold">Feed ({displayRateUnit})</label>
+                                                <NumericInput 
+                                                    value={toDisplay(draftOp.params?.rate || 1500)}
+                                                    onChange={val => setDraftOp({ ...draftOp, params: { ...draftOp.params!, rate: toMmPerMin(val) } })}
+                                                    className="w-full bg-black border border-gray-700 rounded-xl p-3 text-white text-sm font-mono"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] text-gray-400 mb-2 uppercase font-bold">Passes</label>
+                                                <NumericInput 
+                                                    value={draftOp.params?.passes || 1}
+                                                    onChange={val => setDraftOp({ ...draftOp, params: { ...draftOp.params!, passes: val } })}
+                                                    className="w-full bg-black border border-gray-700 rounded-xl p-3 text-white text-sm font-mono"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {(draftOp.opType === 'fill' || draftOp.opType === 'raster') && (
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className="block text-[10px] text-gray-400 mb-2 uppercase font-bold">Line Dist (mm)</label>
+                                                    <NumericInput 
+                                                        value={draftOp.params?.lineDistance || 0.1}
+                                                        onChange={val => setDraftOp({ ...draftOp, params: { ...draftOp.params!, lineDistance: val } })}
+                                                        className="w-full bg-black border border-gray-700 rounded-xl p-3 text-white text-sm font-mono"
+                                                    />
+                                                </div>
+                                                {draftOp.opType === 'raster' && (
+                                                    <div>
+                                                        <label className="block text-[10px] text-gray-400 mb-2 uppercase font-bold">Margin (mm)</label>
+                                                        <NumericInput 
+                                                            value={draftOp.params?.margin || 0}
+                                                            onChange={val => setDraftOp({ ...draftOp, params: { ...draftOp.params!, margin: val } })}
+                                                            className="w-full bg-black border border-gray-700 rounded-xl p-3 text-white text-sm font-mono"
+                                                        />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        <button 
+                                            onClick={() => setDraftOp({ ...draftOp, params: { ...draftOp.params!, airAssist: !draftOp.params?.airAssist } })}
+                                            className={`w-full py-3 rounded-xl text-xs font-black border transition-all ${draftOp.params?.airAssist ? 'bg-miami-cyan text-black border-miami-cyan' : 'bg-black text-gray-500 border-gray-700'}`}
+                                        >
+                                            {draftOp.params?.airAssist ? '💨 Air Assist ON' : '— Air Assist OFF'}
+                                        </button>
+                                    </div>
+                                    
+                                    <div>
+                                        <label className="block text-[10px] text-gray-500 mb-2 uppercase font-bold tracking-widest">Op Name</label>
+                                        <input 
+                                            value={draftOp.name || ''}
+                                            onChange={e => setDraftOp({ ...draftOp, name: e.target.value })}
+                                            placeholder={`Op ${operations.length + 1}`}
+                                            className="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm font-bold outline-none focus:border-miami-cyan transition-colors"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="p-6 border-t border-gray-800 bg-black/40 flex gap-3">
+                            {wizardStep > 1 && (
+                                <button onClick={() => setWizardStep(v => v - 1)} className="px-6 py-4 bg-gray-900 text-white font-black rounded-2xl border border-gray-700 active:scale-95 transition-all">Back</button>
+                            )}
+                            {wizardStep < 3 && draftOp.opType !== 'raster' ? (
+                                <button 
+                                    onClick={() => setWizardStep(v => v + 1)} 
+                                    disabled={wizardStep === 2 && (!draftOp.pathIds || draftOp.pathIds.length === 0)}
+                                    className="flex-1 py-4 bg-miami-cyan text-black font-black rounded-2xl shadow-[0_0_15px_rgba(0,240,255,0.2)] disabled:opacity-30 active:scale-95 transition-all"
+                                >
+                                    Next Step
+                                </button>
+                            ) : (
+                                <button onClick={saveWizard} className="flex-1 py-4 bg-gradient-to-r from-miami-pink to-miami-purple text-white font-black rounded-2xl shadow-[0_0_15px_rgba(255,0,127,0.3)] active:scale-95 transition-all">
+                                    {editingOpId ? 'Save Changes' : 'Add Operation'}
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* ── Header + Tab Bar ── */}
             <div className="px-4 pt-3 pb-2 flex-shrink-0">
@@ -1266,349 +1475,69 @@ export const StudioModule: React.FC = () => {
                         </div>
                     )}
 
-                    {/* ── SVG PATHS & JOB OPERATIONS (only for SVG files) ── */}
-                    {fileKind === 'svg' && (
-                        <>
-                        {/* Panel A: Detected SVG Paths */}
+                    {/* ── JOB OPERATIONS ── */}
+                    {fileKind && (
                         <div className="bg-black/40 border border-gray-800 rounded-xl p-3">
-                            <div className="flex items-center justify-between mb-2">
-                                <p className="text-[10px] uppercase text-gray-400 font-bold tracking-widest">SVG Paths ({svgPaths.length})</p>
-                                {selectedPathIds.length > 0 && (
-                                    <span className="text-[9px] text-miami-cyan font-bold">{selectedPathIds.length} selected</span>
-                                )}
+                            <div className="flex items-center justify-between mb-3">
+                                <p className="text-[10px] uppercase text-gray-400 font-bold tracking-widest">Job Operations ({operations.length})</p>
+                                <button 
+                                    onClick={() => openWizard()}
+                                    className="px-3 py-1.5 bg-miami-cyan/10 border border-miami-cyan/40 text-miami-cyan hover:bg-miami-cyan/20 rounded-lg text-[10px] font-black transition-all"
+                                >
+                                    + Add Operation
+                                </button>
                             </div>
 
-                            {svgPaths.length === 0 ? (
-                                <p className="text-xs text-gray-600 text-center py-2">No geometry elements detected</p>
+                            {operations.length === 0 ? (
+                                <div className="text-center py-8 border-2 border-dashed border-gray-800 rounded-xl">
+                                    <p className="text-xs text-gray-600 font-bold">No operations added yet</p>
+                                    <button onClick={() => openWizard()} className="mt-2 text-[10px] text-miami-cyan font-black uppercase">Create First Op</button>
+                                </div>
                             ) : (
-                                <div className="space-y-1 max-h-40 overflow-y-auto">
-                                    {svgPaths.map(path => {
-                                        const isSelected = selectedPathIds.includes(path.id);
-                                        const assignedOp = operations.find(o => o.pathIds.includes(path.id));
-                                        return (
-                                            <button key={path.id} onClick={() => togglePathSelect(path.id)}
-                                                className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg border text-left transition-all ${
-                                                    isSelected
-                                                        ? 'bg-miami-cyan/10 border-miami-cyan/50'
-                                                        : 'bg-black/40 border-gray-800 hover:border-gray-600'
-                                                }`}>
-                                                <span className={`w-3.5 h-3.5 rounded flex-shrink-0 border ${
-                                                    isSelected ? 'bg-miami-cyan border-miami-cyan' : 'bg-transparent border-gray-600'
-                                                }`} />
-                                                {/* Stroke swatch */}
-                                                {path.strokeColor
-                                                    ? <span className="w-3 h-3 rounded-sm flex-shrink-0 border border-white/20" style={{ background: path.strokeColor }} title={`stroke: ${path.strokeColor}`} />
-                                                    : <span className="w-3 h-3 rounded-sm flex-shrink-0 border border-gray-700" title="no stroke" />}
-                                                {/* Fill swatch */}
-                                                {path.fillColor
-                                                    ? <span className="w-3 h-3 rounded flex-shrink-0 border border-white/20" style={{ background: path.fillColor }} title={`fill: ${path.fillColor}`} />
-                                                    : <span className="w-3 h-3 rounded flex-shrink-0 border border-gray-700" title="no fill" />}
-                                                <span className="flex-1 text-[10px] font-mono text-gray-300 truncate">{path.label}</span>
-                                                {assignedOp
-                                                    ? <span className="text-[8px] font-black px-1.5 py-0.5 rounded bg-miami-pink/20 text-miami-pink flex-shrink-0">{assignedOp.opType.toUpperCase()}</span>
-                                                    : <span className="text-[8px] text-gray-700 flex-shrink-0">UNASSIGNED</span>}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            )}
-
-                            {/* Add operation from selection */}
-                            {svgPaths.length > 0 && (
-                                <div className="mt-2 pt-2 border-t border-gray-800">
-                                    <div className="flex gap-1.5">
-                                        <div className="flex gap-1">
-                                            {(['cut','fill'] as LayerOp[]).map(op => (
-                                                <button key={op} onClick={() => setPendingOpType(op)}
-                                                    className={`px-2.5 py-1.5 rounded-lg text-[10px] font-black border transition-all ${
-                                                        pendingOpType === op
-                                                            ? op === 'cut'
-                                                                ? 'bg-miami-pink text-black border-miami-pink'
-                                                                : 'bg-miami-purple text-white border-miami-purple'
-                                                            : 'bg-black/60 text-gray-500 border-gray-700 hover:border-gray-500'
-                                                    }`}>
-                                                    {op === 'cut' ? '✂ Cut' : '▧ Fill'}
-                                                </button>
-                                            ))}
-                                        </div>
-                                        <button
-                                            onClick={() => addFromSelection(pendingOpType, '')}
-                                            disabled={selectedPathIds.length === 0}
-                                            className="flex-1 py-1.5 rounded-lg text-[10px] font-black border transition-all
-                                                bg-miami-cyan/10 border-miami-cyan/40 text-miami-cyan
-                                                hover:bg-miami-cyan/20 hover:border-miami-cyan
-                                                disabled:opacity-30 disabled:cursor-not-allowed"
-                                        >
-                                            + Add {selectedPathIds.length > 0 ? `(${selectedPathIds.length})` : ''} as {pendingOpType}
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Panel B: Job Operations */}
-                        {operations.length > 0 && (
-                            <div className="bg-black/40 border border-gray-800 rounded-xl p-3">
-                                <p className="text-[10px] uppercase text-gray-400 font-bold tracking-widest mb-2">Job Operations ({operations.length})</p>
                                 <div className="space-y-2">
                                     {operations.map((op, idx) => (
-                                        <div key={op.id} className="border border-gray-700 rounded-xl overflow-hidden">
-                                            {/* Op header */}
-                                            <div className={`flex items-center gap-2 px-2.5 py-2 ${
-                                                op.opType === 'cut' ? 'bg-miami-pink/10' : 'bg-miami-purple/10'
-                                            }`}>
-                                                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${
-                                                    op.opType === 'cut' ? 'bg-miami-pink/30 text-miami-pink' : 'bg-miami-purple/30 text-miami-purple'
-                                                }`}>{idx + 1}</span>
-                                                <input
-                                                    value={op.name || `${op.opType === 'cut' ? 'Cut' : 'Fill'} ${idx + 1}`}
-                                                    onChange={e => updateOperation(op.id, { name: e.target.value })}
-                                                    placeholder={`${op.opType === 'cut' ? 'Cut' : 'Fill'} ${idx + 1}`}
-                                                    className="flex-1 bg-transparent text-xs font-bold text-white outline-none min-w-0"
-                                                />
-                                                <button onClick={() => moveOp(op.id, 'up')}   disabled={idx === 0}                        className="text-gray-600 hover:text-gray-300 disabled:opacity-20 text-sm">↑</button>
-                                                <button onClick={() => moveOp(op.id, 'down')} disabled={idx === operations.length - 1}   className="text-gray-600 hover:text-gray-300 disabled:opacity-20 text-sm">↓</button>
-                                                <button onClick={() => setExpandedOpId(expandedOpId === op.id ? null : op.id)} className="text-gray-500 hover:text-gray-200 text-xs font-bold">
-                                                    {expandedOpId === op.id ? '▲' : '▼'}
-                                                </button>
-                                                <button onClick={() => removeOperation(op.id)} className="text-gray-700 hover:text-red-400 text-xs font-bold">🗑</button>
-                                            </div>
-
-                                            {/* Assigned paths chips */}
-                                            <div className="px-2.5 py-1.5 flex flex-wrap gap-1">
-                                                {op.pathIds.map(pid => (
-                                                    <span key={pid} className="flex items-center gap-1 text-[9px] bg-black/60 border border-gray-700 rounded px-1.5 py-0.5 font-mono text-gray-400">
-                                                        {pid}
-                                                        <button onClick={() => removePathFromOp(op.id, pid)} className="text-gray-700 hover:text-red-400">×</button>
-                                                    </span>
-                                                ))}
-                                            </div>
-
-                                            {/* Expanded params */}
-                                            {expandedOpId === op.id && (
-                                                <div className="px-2.5 pb-2.5 space-y-2 border-t border-gray-800 pt-2">
-                                                    {/* Preset picker */}
+                                        <div key={op.id} className="bg-black/40 border border-gray-800 rounded-xl overflow-hidden group">
+                                            <div className="flex items-center gap-3 p-3">
+                                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm ${
+                                                    op.opType === 'cut' ? 'bg-miami-pink/20 text-miami-pink' : 
+                                                    op.opType === 'fill' ? 'bg-miami-purple/20 text-miami-purple' : 
+                                                    'bg-miami-cyan/20 text-miami-cyan'
+                                                }`}>
+                                                    {op.opType === 'cut' ? '✂' : op.opType === 'fill' ? '▧' : '🖼️'}
+                                                </div>
+                                                <div className="flex-1 min-w-0">
                                                     <div className="flex items-center gap-2">
-                                                        <label className="text-[9px] text-gray-500 font-bold uppercase flex-shrink-0">Preset</label>
-                                                        <select value={''} onChange={e => {
-                                                            const p = presets.find(x => x.id === e.target.value);
-                                                            if (p) updateParams(op.id, { power: p.power, rate: p.rate, passes: p.passes, airAssist: p.airAssist, lineDistance: p.lineDistance });
-                                                        }} className="flex-1 bg-black border border-gray-700 text-xs text-gray-300 rounded-lg px-2 py-1 outline-none">
-                                                            <option value="">— Apply preset —</option>
-                                                            {presets.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                                                        </select>
+                                                        <span className="text-[10px] font-black text-gray-600">#{idx + 1}</span>
+                                                        <span className="text-xs font-bold text-white truncate">{op.name}</span>
                                                     </div>
-                                                    <div className="grid grid-cols-2 gap-2">
-                                                        <div>
-                                                            <label className="block text-[9px] text-gray-500 mb-1 uppercase font-bold">Power (0–1000 S)</label>
-                                                            <NumericInput value={op.params.power}
-                                                                onChange={val => updateParams(op.id, { power: val })}
-                                                                min={0}
-                                                                className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-lg p-1.5 text-white text-sm font-mono outline-none" />
-                                                        </div>
-                                                        <div>
-                                                            <label className="block text-[9px] text-gray-500 mb-1 uppercase font-bold">Feed ({feedUnits})</label>
-                                                            <NumericInput
-                                                                value={feedUnits === 'mm/s' ? +(op.params.rate / 60).toFixed(2) : op.params.rate}
-                                                                onChange={val => updateParams(op.id, { rate: feedUnits === 'mm/s' ? Math.round(val * 60) : val })}
-                                                                min={0}
-                                                                className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-lg p-1.5 text-white text-sm font-mono outline-none" />
-                                                        </div>
-                                                        <div>
-                                                            <label className="block text-[9px] text-gray-500 mb-1 uppercase font-bold">Passes</label>
-                                                            <NumericInput value={op.params.passes}
-                                                                onChange={val => updateParams(op.id, { passes: val })}
-                                                                min={1}
-                                                                className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-lg p-1.5 text-white text-sm font-mono outline-none" />
-                                                        </div>
-                                                        {op.opType === 'fill' && (
-                                                            <div>
-                                                                <label className="block text-[9px] text-gray-500 mb-1 uppercase font-bold">Line Dist (mm)</label>
-                                                                <NumericInput value={op.params.lineDistance}
-                                                                    onChange={val => updateParams(op.id, { lineDistance: val })}
-                                                                    min={0.01}
-                                                                    className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-lg p-1.5 text-white text-sm font-mono outline-none" />
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                    <button onClick={() => updateParams(op.id, { airAssist: !op.params.airAssist })}
-                                                        className={`w-full py-1.5 rounded-lg text-[10px] font-black border transition-all ${
-                                                            op.params.airAssist ? 'bg-miami-cyan text-black border-miami-cyan' : 'bg-black text-gray-500 border-gray-700 hover:border-gray-500'
-                                                        }`}>
-                                                        {op.params.airAssist ? '💨 Air Assist On' : '— Air Assist Off'}
-                                                    </button>
+                                                    <p className="text-[9px] text-gray-500 font-mono mt-0.5">
+                                                        {op.opType.toUpperCase()} · {op.params.power}S · {toDisplay(op.params.rate)} {displayRateUnit}
+                                                    </p>
+                                                </div>
+                                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <button onClick={() => moveOp(op.id, 'up')} disabled={idx === 0} className="w-7 h-7 flex items-center justify-center rounded-lg bg-gray-900 text-gray-400 hover:text-white disabled:opacity-20 transition-all">↑</button>
+                                                    <button onClick={() => moveOp(op.id, 'down')} disabled={idx === operations.length - 1} className="w-7 h-7 flex items-center justify-center rounded-lg bg-gray-900 text-gray-400 hover:text-white disabled:opacity-20 transition-all">↓</button>
+                                                </div>
+                                                <button 
+                                                    onClick={() => openWizard(op)}
+                                                    className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-[10px] font-black transition-all"
+                                                >
+                                                    Edit
+                                                </button>
+                                                <button onClick={() => removeOperation(op.id)} className="w-8 h-8 flex items-center justify-center text-gray-600 hover:text-red-400 transition-colors">🗑</button>
+                                            </div>
+                                            {op.opType !== 'raster' && (
+                                                <div className="px-3 pb-3 flex flex-wrap gap-1">
+                                                    {op.pathIds.slice(0, 3).map(pid => (
+                                                        <span key={pid} className="text-[8px] bg-black/40 border border-gray-800 rounded px-1.5 py-0.5 font-mono text-gray-500">{pid}</span>
+                                                    ))}
+                                                    {op.pathIds.length > 3 && <span className="text-[8px] text-gray-600 font-bold">+{op.pathIds.length - 3} more</span>}
                                                 </div>
                                             )}
                                         </div>
                                     ))}
                                 </div>
-                            </div>
-                        )}
-                        </>
-                    )}
-
-                    {/* Bitmap dithering selector */}
-                    {fileKind === 'bitmap' && (
-                        <div className="bg-black/40 border border-gray-800 rounded-xl p-3">
-                            <p className="text-[10px] uppercase text-gray-400 font-bold tracking-widest mb-2.5">Raster Dithering</p>
-                            <div className="grid grid-cols-2 gap-2">
-                                {([
-                                    { key: 'threshold',       label: 'Threshold',       desc: 'Hard binary cutoff'    },
-                                    { key: 'floyd-steinberg', label: 'Floyd-Steinberg', desc: 'Error diffusion'       },
-                                    { key: 'atkinson',        label: 'Atkinson',        desc: 'Mac classic diffusion' },
-                                    { key: 'bayer',           label: 'Bayer 4×4',       desc: 'Ordered pattern'       },
-                                ] as { key: DitherMethod; label: string; desc: string }[]).map(({ key, label, desc }) => (
-                                    <button key={key} onClick={() => setDitherMethod(key)}
-                                        className={`py-2.5 px-3 rounded-xl text-left transition-all border ${ditherMethod === key ? 'bg-miami-cyan text-black border-miami-cyan shadow-[0_0_10px_rgba(0,240,255,0.3)]' : 'bg-black/60 text-gray-400 border-gray-700 hover:border-miami-cyan/40 hover:text-gray-200'}`}>
-                                        <span className="block text-xs font-black">{label}</span>
-                                        <span className={`block text-[9px] mt-0.5 ${ditherMethod === key ? 'text-black/60' : 'text-gray-600'}`}>{desc}</span>
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* ── OPERATION PARAMETERS (always visible when file loaded) ── */}
-                    {fileKind && (
-                        <div className="bg-black/40 border border-gray-800 rounded-xl p-3 space-y-3">
-                            <div className="flex items-center justify-between">
-                                <p className="text-[10px] uppercase text-gray-400 font-bold tracking-widest">Laser Parameters</p>
-                                {/* Quick preset fill */}
-                                {filteredPresets.length > 0 && (
-                                    <select value={selectedPreset} onChange={e => applyPreset(e.target.value)}
-                                        className="bg-black border border-gray-700 rounded-lg px-2 py-1 text-[10px] text-gray-400 outline-none focus:border-miami-pink transition-colors max-w-[140px]">
-                                        <option value="">Apply preset…</option>
-                                        {filteredPresets.map(p => (
-                                            <option key={p.id} value={p.id}>{p.name}</option>
-                                        ))}
-                                    </select>
-                                )}
-                            </div>
-
-                            {/* Power slider row — dual-range for bitmap (min/max S), single for vector */}
-                            {fileKind === 'bitmap' ? (
-                                <div>
-                                    <div className="flex justify-between mb-1">
-                                        <label className="text-[9px] text-gray-400 uppercase font-bold">Laser Power</label>
-                                        <span className="text-[9px] font-mono font-black">
-                                            <span className="text-miami-purple">{sPct(opMinPower)}</span>
-                                            <span className="text-gray-600"> – </span>
-                                            <span className="text-miami-pink">{sPct(opPower)}</span>
-                                        </span>
-                                    </div>
-                                    {/*
-                                     * Custom dual-range slider.
-                                     * Two stacked <input type="range"> cannot work reliably: the top input
-                                     * always captures pointer events across its full track width, intercepting
-                                     * drags meant for the lower input's thumb.
-                                     * Fix: a single <div> with pointer-capture handles all interactions.
-                                     * Thumbs are custom CSS dots; no native inputs are used.
-                                     */}
-                                    <div
-                                        ref={dualRangeRef}
-                                        className="relative h-6 flex items-center cursor-pointer select-none touch-none"
-                                        onPointerDown={onDualDown}
-                                        onPointerMove={onDualMove}
-                                        onPointerUp={onDualUp}
-                                        onPointerCancel={onDualUp}
-                                    >
-                                        {/* Background track */}
-                                        <div className="absolute inset-x-0 h-1 rounded-full bg-gray-800 pointer-events-none" />
-                                        {/* Active fill between min and max thumb */}
-                                        <div
-                                            className="absolute h-1 rounded-full bg-gradient-to-r from-miami-purple to-miami-pink pointer-events-none"
-                                            style={{
-                                                left:  `${(opMinPower / maxSpindleS) * 100}%`,
-                                                right: `${100 - (opPower  / maxSpindleS) * 100}%`,
-                                            }}
-                                        />
-                                        {/* Min thumb (purple) */}
-                                        <div
-                                            className="absolute w-4 h-4 rounded-full border-2 border-[#0a0a0a] bg-miami-purple pointer-events-none transition-shadow"
-                                            style={{
-                                                left: `calc(${(opMinPower / maxSpindleS) * 100}% - 8px)`,
-                                                boxShadow: '0 0 8px rgba(112,0,255,0.6)',
-                                            }}
-                                        />
-                                        {/* Max thumb (pink) */}
-                                        <div
-                                            className="absolute w-4 h-4 rounded-full border-2 border-[#0a0a0a] bg-miami-pink pointer-events-none transition-shadow"
-                                            style={{
-                                                left: `calc(${(opPower / maxSpindleS) * 100}% - 8px)`,
-                                                boxShadow: '0 0 8px rgba(255,0,127,0.5)',
-                                            }}
-                                        />
-                                    </div>
-                                    <p className="text-[9px] text-gray-700 mt-0.5">Min (shadows) → Max (blacks) · 0 = white areas off</p>
-                                </div>
-                            ) : (
-                                <div>
-                                    <div className="flex justify-between mb-1">
-                                        <label className="text-[9px] text-gray-400 uppercase font-bold">Laser Power</label>
-                                        <span className="text-[9px] text-miami-pink font-mono font-black">{sPct(opPower)}</span>
-                                    </div>
-                                    <input type="range" min={0} max={maxSpindleS} value={opPower}
-                                        onChange={e => setOpPower(Number(e.target.value))}
-                                        className="w-full accent-miami-pink" />
-                                </div>
                             )}
-
-                            {/* Rate / Passes */}
-                            <div className="grid grid-cols-2 gap-2">
-                                <div>
-                                    <label className="block text-[9px] text-gray-400 mb-1 uppercase font-bold">
-                                        Feed Rate ({displayRateUnit})
-                                    </label>
-                                    <NumericInput
-                                        value={displayRate}
-                                        onChange={val => setDisplayRate(val)}
-                                        min={0}
-                                        className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-lg p-2 text-white text-sm font-mono outline-none transition-colors"
-                                    />
-                                    {feedUnits === 'mm/s' && (
-                                        <p className="text-[9px] text-gray-600 mt-0.5 font-mono">
-                                            = {opRate} mm/min in GCode
-                                        </p>
-                                    )}
-                                </div>
-                                <div>
-                                    <label className="block text-[9px] text-gray-400 mb-1 uppercase font-bold">Passes</label>
-                                    <NumericInput value={opPasses} onChange={val => setOpPasses(val)} min={1}
-                                        className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-lg p-2 text-white text-sm font-mono outline-none transition-colors" />
-                                </div>
-                            </div>
-
-                            {/* Line distance + angle — only for fill / raster */}
-                            {showLineParams && (
-                                <div className="grid grid-cols-2 gap-2">
-                                    <div>
-                                        <label className="block text-[9px] text-gray-400 mb-1 uppercase font-bold">Line Dist (mm)</label>
-                                        <NumericInput value={opLineDistance} onChange={val => setOpLineDistance(val)} min={0.01}
-                                            className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-lg p-2 text-white text-sm font-mono outline-none transition-colors" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-[9px] text-gray-400 mb-1 uppercase font-bold">Scan Angle (°)</label>
-                                        <NumericInput value={opLineAngle} onChange={val => setOpLineAngle(val)}
-                                            className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-lg p-2 text-white text-sm font-mono outline-none transition-colors" />
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Margin + Air Assist */}
-                            <div className="grid grid-cols-2 gap-2 items-start">
-                                <div>
-                                    <label className="block text-[9px] text-gray-400 mb-1 uppercase font-bold">Overscan Margin (mm)</label>
-                                    <NumericInput value={opMargin} onChange={val => setOpMargin(val)} min={0}
-                                        className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-lg p-2 text-white text-sm font-mono outline-none transition-colors" />
-                                </div>
-                                <div>
-                                    <label className="block text-[9px] text-gray-400 mb-2 uppercase font-bold">Air Assist</label>
-                                    <button onClick={() => setOpAirAssist(v => !v)}
-                                        className={`w-full py-2 rounded-xl text-xs font-black border transition-all ${opAirAssist ? 'bg-miami-cyan text-black border-miami-cyan' : 'bg-black text-gray-500 border-gray-700 hover:border-gray-500'}`}>
-                                        {opAirAssist ? '💨 On' : '— Off'}
-                                    </button>
-                                </div>
-                            </div>
                         </div>
                     )}
 

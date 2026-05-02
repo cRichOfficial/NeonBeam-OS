@@ -17,7 +17,7 @@ export interface SvgPathInfo {
 }
 
 /** Operation types — cut-inside/cut-outside removed pending Clipper.js support */
-export type LayerOp = 'cut' | 'fill';
+export type LayerOp = 'cut' | 'fill' | 'raster';
 
 /** One laser operation in the job, containing one or more path references */
 export interface JobOperation {
@@ -152,6 +152,7 @@ export interface MultiOpGCodeOptions {
     widthMm:    number;   // physical width of the SVG at current scale
     heightMm:   number;
     rotation?:  number;   // degrees, rotation around design center
+    rasterCanvas?: HTMLCanvasElement; // required for raster operations
 }
 
 /** Generate combined GCode for all operations in array order (= addition order). */
@@ -201,23 +202,82 @@ export function generateMultiOpGCode(opts: MultiOpGCodeOptions): string {
 
     for (let opIdx = 0; opIdx < operations.length; opIdx++) {
         const op = operations[opIdx];
-        if (op.pathIds.length === 0) continue;
+        
+        // Raster operations don't use pathIds
+        if (op.opType !== 'raster' && op.pathIds.length === 0) continue;
 
-        const elements = op.pathIds
-            .map(id => idMap.get(id))
-            .filter((el): el is Element => !!el && el instanceof SVGGeometryElement);
+        const elements = op.opType === 'raster' 
+            ? [] 
+            : op.pathIds
+                .map(id => idMap.get(id))
+                .filter((el): el is Element => !!el && el instanceof SVGGeometryElement);
 
-        if (elements.length === 0) continue;
+        if (op.opType !== 'raster' && elements.length === 0) continue;
 
         out.push(`; ${'='.repeat(60)}`);
         out.push(`; Op ${opIdx + 1} / ${operations.length} : ${op.name} [${op.opType}]`);
-        out.push(`; Paths: ${op.pathIds.join(', ')}`);
+        if (op.opType !== 'raster') out.push(`; Paths: ${op.pathIds.join(', ')}`);
         out.push(`; Power: ${op.params.power}S  Feed: ${op.params.rate} mm/min  Passes: ${op.params.passes}`);
+        if (op.opType === 'raster') out.push(`; Margin: ${op.params.margin}mm  MinPower: ${op.params.minPower}S`);
         out.push(`; ${'='.repeat(60)}`);
 
         if (op.params.airAssist) { out.push('M8 ; air assist on'); anyAirAssist = true; }
 
-        if (op.opType === 'fill') {
+        if (op.opType === 'raster') {
+            const canvas = opts.rasterCanvas;
+            if (!canvas) {
+                out.push('; WARNING: Raster operation requested but no canvas provided.');
+            } else {
+                const ctx = canvas.getContext('2d')!;
+                const w = canvas.width, h = canvas.height;
+                const { data } = ctx.getImageData(0, 0, w, h);
+                const pixelLum = (px: number, row: number) => data[(row * w + px) * 4];
+                const pixelS = (px: number, row: number): number => {
+                    const lum = pixelLum(px, row);
+                    if (lum >= 128) return 0;
+                    const t = 1 - lum / 127;
+                    return Math.round(op.params.minPower + t * (op.params.power - op.params.minPower));
+                };
+                const isDark = (px: number, row: number) => pixelLum(px, row) < 128;
+                const xToMm = (px: number) => posX + (px / Math.max(w - 1, 1)) * widthMm;
+                const nLines = Math.ceil(heightMm / op.params.lineDistance);
+                const marginPx = Math.round((op.params.margin / Math.max(widthMm, 0.001)) * w);
+
+                out.push('M4 ; dynamic laser mode');
+                out.push(`F${op.params.rate}`);
+
+                for (let pass = 0; pass < op.params.passes; pass++) {
+                    if (op.params.passes > 1) out.push(`; Pass ${pass + 1}/${op.params.passes}`);
+                    for (let li = 0; li < nLines; li++) {
+                        const yMm = posY + heightMm - li * op.params.lineDistance;
+                        const pixRow = Math.min(h - 1, Math.floor((li / nLines) * h));
+                        const ltr = li % 2 === 0;
+                        const segs: { a: number; b: number }[] = [];
+                        let burning = false, startPx = 0;
+                        const pxSeq = ltr ? Array.from({ length: w }, (_, i) => i) : Array.from({ length: w }, (_, i) => w - 1 - i);
+
+                        for (const px of pxSeq) {
+                            const dark = isDark(px, pixRow);
+                            if (dark && !burning) { startPx = px; burning = true; }
+                            if (!dark && burning) { segs.push({ a: startPx, b: px - (ltr ? 1 : -1) }); burning = false; }
+                        }
+                        if (burning) segs.push({ a: startPx, b: pxSeq[pxSeq.length - 1] });
+                        if (segs.length === 0) continue;
+
+                        const approachX = ltr ? xToMm(Math.max(0, segs[0].a - marginPx)) : xToMm(Math.min(w - 1, segs[0].a + marginPx));
+                        const approachPt = rotatePt({ x: approachX, y: yMm });
+                        out.push(`G0 X${approachPt.x.toFixed(3)} Y${approachPt.y.toFixed(3)}`);
+                        for (const seg of segs) {
+                            const segA = rotatePt({ x: xToMm(seg.a), y: yMm });
+                            out.push(`G1 X${segA.x.toFixed(3)} Y${segA.y.toFixed(3)} S0`);
+                            const segB = rotatePt({ x: xToMm(seg.b), y: yMm });
+                            out.push(`G1 X${segB.x.toFixed(3)} Y${segB.y.toFixed(3)} S${pixelS(seg.b, pixRow)}`);
+                        }
+                        out.push('G1 S0');
+                    }
+                }
+            }
+        } else if (op.opType === 'fill') {
             // Shape-aware hatch fill using an off-screen canvas mask
             out.push('M4 ; dynamic laser mode');
             out.push(`F${op.params.rate}`);

@@ -105,11 +105,13 @@ export const useJobOperationsStore = create<JobOperationsState>((set, get) => ({
 
     addFromSelection: (opType, name, paramsPatch) => {
         const { selectedPathIds, operations } = get();
-        if (selectedPathIds.length === 0) return;
+        // For SVG ops (cut/fill), we need a selection. For raster, we don't.
+        if (opType !== 'raster' && selectedPathIds.length === 0) return;
+        
         const params: OpParams = { ...DEFAULT_PARAMS, ...paramsPatch };
         const newOp: JobOperation = {
             id:      uid(),
-            name:    name || `${opType === 'fill' ? 'Fill' : 'Cut'} ${operations.length + 1}`,
+            name:    name || `${opType.charAt(0).toUpperCase() + opType.slice(1)} ${operations.length + 1}`,
             opType,
             pathIds: [...selectedPathIds],
             params,
@@ -149,7 +151,7 @@ export const useJobOperationsStore = create<JobOperationsState>((set, get) => ({
             op.id === opId
                 ? { ...op, pathIds: op.pathIds.filter(p => p !== pathId) }
                 : op
-        ).filter(op => op.pathIds.length > 0),   // auto-remove empty ops
+        ).filter(op => op.opType === 'raster' || op.pathIds.length > 0),   // auto-remove empty SVG ops
     })),
 
     clearAll: () => set({ 
