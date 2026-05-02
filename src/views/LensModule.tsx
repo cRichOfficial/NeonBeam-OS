@@ -10,9 +10,8 @@ import type { DetectionResult, TransformResponse, CalibrationPoint, LensHealthRe
 const CW = 480, CH = 300, ML = 32, MB = 20;
 const DW = CW - ML, DH = CH - MB;
 
-type LensTab = 'align' | 'optics' | 'mapping' | 'tags';
+type LensTab = 'optics' | 'mapping' | 'tags';
 const TAB_LABELS: Record<LensTab, string> = {
-    align: 'Align',
     optics: 'Optics',
     mapping: 'Mapping',
     tags: 'Tags',
@@ -29,7 +28,7 @@ export const LensModule: React.FC = () => {
     const { designSource, designType, designName, setPlacement } = useJobOperationsStore();
 
     // ── UI State ──
-    const [activeTab, setActiveTab] = useState<LensTab>('align');
+    const [activeTab, setActiveTab] = useState<LensTab>('optics');
     const [isStreaming, setIsStreaming] = useState(true);
     const [detections, setDetections] = useState<DetectionResult[]>([]);
     const [selectedWorkpieceId, setSelectedWorkpieceId] = useState<string | null>(null);
@@ -111,30 +110,7 @@ export const LensModule: React.FC = () => {
         const mmX = (x - ML) / baseSc;
         const mmY = (plotH - (y)) / baseSc;
 
-        if (activeTab === 'align') {
-            // Find closest detection
-            let closestId = null;
-            let minDist = 20; // 20mm threshold
-
-            for (const d of detections) {
-                if (d.box) {
-                    const [bx, by, bw, bh] = d.box;
-                    if (mmX >= bx && mmX <= bx + bw && mmY >= by && mmY <= by + bh) {
-                        closestId = d.workpiece_id;
-                        break;
-                    }
-                } else if (d.points && d.points.length > 0) {
-                    const cx = d.points.reduce((acc, p) => acc + p.x, 0) / d.points.length;
-                    const cy = d.points.reduce((acc, p) => acc + p.y, 0) / d.points.length;
-                    const dist = Math.hypot(mmX - cx, mmY - cy);
-                    if (dist < minDist) {
-                        minDist = dist;
-                        closestId = d.workpiece_id;
-                    }
-                }
-            }
-            setSelectedWorkpieceId(closestId);
-        }
+        // handleCanvasClick placeholder for future tab-specific interactions
     };
 
     const alignDesign = async () => {
@@ -385,8 +361,8 @@ export const LensModule: React.FC = () => {
             {/* Header */}
             <div className="flex flex-col gap-3 mb-6 flex-shrink-0">
                 <div>
-                    <h2 className="text-3xl font-black text-miami-cyan tracking-tight leading-none mb-1">NeonBeam Lens</h2>
-                    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest opacity-80">Vision-Aided Alignment System</p>
+                    <h2 className="text-3xl font-black text-miami-cyan tracking-tight leading-none mb-1">Lens Calibration</h2>
+                    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest opacity-80">Vision Calibration & Tuning</p>
                 </div>
 
                 {/* Calibration Status Banner (always visible) */}
@@ -438,7 +414,7 @@ export const LensModule: React.FC = () => {
                 })()}
 
                 <div className="flex bg-black/60 p-1 rounded-xl border border-gray-800 self-start">
-                    {(['align', 'optics', 'mapping', 'tags'] as LensTab[]).map(tab => (
+                    {(['optics', 'mapping', 'tags'] as LensTab[]).map(tab => (
                         <button key={tab} onClick={() => setActiveTab(tab)}
                             className={`px-4 py-2 rounded-lg text-xs font-black transition-all uppercase tracking-wider ${
                                 activeTab === tab 
@@ -452,68 +428,6 @@ export const LensModule: React.FC = () => {
             </div>
 
             <div className="flex flex-col gap-4">
-                {/* ── ALIGN TAB ── */}
-                {activeTab === 'align' && (
-                    <>
-                        <div className="relative min-h-[200px] bg-black rounded-2xl overflow-hidden border border-gray-800 shadow-2xl">
-                            {isStreaming && lensApiUrl ? (
-                                <img src={streamUrl} alt="Lens Stream" className="w-full h-auto block" onError={() => setIsStreaming(false)} />
-                            ) : (
-                                <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-600 gap-2">
-                                    <span className="text-4xl">📷</span>
-                                    <span className="text-sm font-bold uppercase tracking-widest">Stream Unavailable</span>
-                                </div>
-                            )}
-                            <div className="absolute top-4 right-4 bg-black/60 backdrop-blur-md border border-white/10 rounded-xl p-3 pointer-events-none">
-                                <div className="flex items-center gap-2 mb-1">
-                                    <div className={`w-2 h-2 rounded-full ${isStreaming ? 'bg-red-500 animate-pulse' : 'bg-gray-500'}`} />
-                                    <span className="text-[10px] font-bold text-gray-300 uppercase tracking-tighter">LIVE</span>
-                                </div>
-                                <div className="text-[9px] text-gray-400 font-mono">{detections.length} objects</div>
-                            </div>
-                        </div>
-
-                        <div className="flex flex-col gap-2">
-                            <div className="flex items-center justify-between">
-                                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Workspace View</span>
-                                <button onClick={refreshDetections} disabled={isDetecting} className="text-[10px] text-miami-cyan hover:underline uppercase font-bold">
-                                    {isDetecting ? 'Detecting...' : '↻ Refresh Objects'}
-                                </button>
-                            </div>
-                            <div className="bg-black/40 rounded-2xl border border-gray-800 p-2 flex items-center justify-center shadow-inner overflow-hidden">
-                                <canvas ref={canvasRef} width={CW} height={CH} onClick={handleCanvasClick} className="cursor-crosshair rounded-lg max-w-full h-auto" />
-                            </div>
-                        </div>
-
-                        <div className="bg-black/40 border border-gray-800 rounded-2xl p-4 flex flex-col gap-4">
-                            <div className="flex items-center justify-between">
-                                <div className="flex flex-col">
-                                    <span className="text-[10px] font-bold text-gray-500 uppercase">Selected Workpiece</span>
-                                    <span className="text-sm text-miami-cyan font-black truncate max-w-[200px]">
-                                        {selectedWorkpieceId || 'None'}
-                                    </span>
-                                </div>
-                                <button disabled={!selectedWorkpieceId || !designSource || isTransforming} onClick={alignDesign}
-                                    className="bg-gradient-to-r from-miami-cyan to-miami-purple px-6 py-2 rounded-xl font-black text-sm shadow-lg shadow-miami-cyan/20 disabled:opacity-30 transition-all">
-                                    {isTransforming ? 'ALIGNING...' : 'ALIGN TO WORKPIECE'}
-                                </button>
-                            </div>
-                            {transformResult?.success && (
-                                <div className="border-t border-gray-800 pt-3 grid grid-cols-3 gap-2">
-                                    <div className="text-center">
-                                        <div className="text-[9px] text-gray-500 uppercase">Pos</div>
-                                        <div className="text-xs font-mono">{transformResult.translation?.x.toFixed(1)},{transformResult.translation?.y.toFixed(1)}</div>
-                                    </div>
-                                    <div className="text-center">
-                                        <div className="text-[9px] text-gray-500 uppercase">Rot</div>
-                                        <div className="text-xs font-mono">{transformResult.rotation?.toFixed(1)}°</div>
-                                    </div>
-                                    <button onClick={() => useNavigationStore.getState().navigateTo('studio')} className="bg-miami-cyan/20 text-miami-cyan text-[10px] font-black rounded border border-miami-cyan/30">STUDIO →</button>
-                                </div>
-                            )}
-                        </div>
-                    </>
-                )}
 
                 {/* ── MAPPING TAB (AprilTag Homography) ── */}
                 {activeTab === 'mapping' && (

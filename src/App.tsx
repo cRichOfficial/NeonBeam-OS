@@ -30,9 +30,13 @@ ModuleRegistry.register({
     isCore: true,
 });
 
+ModuleRegistry.register({ id: 'studio',           title: 'Design Studio',     icon: '🎨', component: StudioModule,          isCore: true });
+ModuleRegistry.register({ id: 'material_presets',  title: 'Material Presets',  icon: '🔥', component: MaterialPresetsModule,  isCore: true });
+ModuleRegistry.register({ id: 'gcode_studio',      title: 'Macro Studio',      icon: '📝', component: GCodeStudioModule,      isCore: true });
+
 ModuleRegistry.register({
     id: 'lens',
-    title: 'NeonBeam Lens',
+    title: 'Lens Calibration',
     icon: (
         <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
             <rect x="8" y="12" width="32" height="24" rx="4" stroke="currentColor" strokeWidth="1.5" />
@@ -45,9 +49,6 @@ ModuleRegistry.register({
     isCore: true,
 });
 
-ModuleRegistry.register({ id: 'studio',           title: 'Design Studio',     icon: '🎨', component: StudioModule,          isCore: true });
-ModuleRegistry.register({ id: 'gcode_studio',      title: 'Macro Studio',      icon: '📝', component: GCodeStudioModule,      isCore: true });
-ModuleRegistry.register({ id: 'material_presets',  title: 'Material Profiles', icon: '🔥', component: MaterialPresetsModule,  isCore: true });
 ModuleRegistry.register({ id: 'machine_settings',  title: 'Machine Config',    icon: '⚙️', component: MachineSettingsModule,  isCore: true });
 ModuleRegistry.register({ id: 'app_settings',      title: 'App Settings',      icon: '🎛️', component: AppSettingsModule,      isCore: true });
 

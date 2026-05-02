@@ -5,7 +5,7 @@ export interface MaterialPreset {
     id: string;
     name: string;
     material: string; // e.g., "Birch Wood", "Slate"
-    opType: 'Cut' | 'Engrave' | 'Fill' | 'Score';
+    opType: 'Cut' | 'Engrave' | 'Fill';
     power: number; // 0-1000
     rate: number; // Feed rate in mm/min — ALWAYS mm/min regardless of display units preference (converted by UI layer)
     lineDistance: number; // mm
