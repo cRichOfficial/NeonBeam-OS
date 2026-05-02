@@ -14,8 +14,12 @@ export interface DetectionResult {
     workpiece_id: string;
     label?: string;
     confidence?: number;
-    box?: [number, number, number, number]; // [x, y, w, h] in normalized or image coords
-    points?: Array<{ x: number, y: number }>;
+    box?: [number, number, number, number]; // [x, y, w, h] in mm workspace coords (axis-aligned)
+    points?: Array<{ x: number, y: number }>;  // segmentation outline or corners
+    corners?: Array<{ x: number, y: number }>; // 4 corners of the oriented bounding box
+    center_x?: number;  // mm — object centroid X (if provided by API)
+    center_y?: number;  // mm — object centroid Y (if provided by API)
+    angle_deg?: number; // degrees — object orientation (if provided by API)
 }
 
 export interface TransformRequest {

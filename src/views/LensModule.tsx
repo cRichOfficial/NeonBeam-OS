@@ -76,6 +76,8 @@ export const LensModule: React.FC = () => {
     const scY = baseSc;
     const plotW = scX * mmW;
     const plotH = scY * mmH;
+    // Center the plot area horizontally
+    const plotX = ML + (DW - plotW) / 2;
 
     const streamUrl = lensService.getStreamUrl();
 
@@ -278,29 +280,29 @@ export const LensModule: React.FC = () => {
         ctx.fillStyle = '#080808'; ctx.fillRect(0, 0, CW, CH);
 
         // Bed background
-        ctx.fillStyle = '#111111'; ctx.fillRect(ML, 0, plotW, plotH);
+        ctx.fillStyle = '#111111'; ctx.fillRect(plotX, 0, plotW, plotH);
         ctx.strokeStyle = 'rgba(0,240,255,0.1)'; ctx.lineWidth = 1;
-        ctx.strokeRect(ML, 0, plotW, plotH);
+        ctx.strokeRect(plotX, 0, plotW, plotH);
 
         // 2. Grid (Extended)
         const gMinX = -50, gMaxX = mmW + 50, gMinY = -50, gMaxY = mmH + 50;
 
         // Minor grid
         ctx.beginPath(); ctx.strokeStyle = 'rgba(0,240,255,0.03)'; ctx.lineWidth = 0.5;
-        for (let x = Math.floor(gMinX/minor)*minor; x <= gMaxX; x += minor) { const px = ML + x * scX; ctx.moveTo(px, 0); ctx.lineTo(px, plotH); }
-        for (let y = Math.floor(gMinY/minor)*minor; y <= gMaxY; y += minor) { const py = plotH - y * scY; ctx.moveTo(ML, py); ctx.lineTo(ML + plotW, py); }
+        for (let x = Math.floor(gMinX/minor)*minor; x <= gMaxX; x += minor) { const px = plotX + x * scX; ctx.moveTo(px, 0); ctx.lineTo(px, plotH); }
+        for (let y = Math.floor(gMinY/minor)*minor; y <= gMaxY; y += minor) { const py = plotH - y * scY; ctx.moveTo(plotX, py); ctx.lineTo(plotX + plotW, py); }
         ctx.stroke();
 
         // Major grid
         ctx.beginPath(); ctx.strokeStyle = 'rgba(0,240,255,0.08)'; ctx.lineWidth = 1;
-        for (let x = Math.floor(gMinX/major)*major; x <= gMaxX; x += major) { const px = ML + x * scX; ctx.moveTo(px, 0); ctx.lineTo(px, plotH); }
-        for (let y = Math.floor(gMinY/major)*major; y <= gMaxY; y += major) { const py = plotH - y * scY; ctx.moveTo(ML, py); ctx.lineTo(ML + plotW, py); }
+        for (let x = Math.floor(gMinX/major)*major; x <= gMaxX; x += major) { const px = plotX + x * scX; ctx.moveTo(px, 0); ctx.lineTo(px, plotH); }
+        for (let y = Math.floor(gMinY/major)*major; y <= gMaxY; y += major) { const py = plotH - y * scY; ctx.moveTo(plotX, py); ctx.lineTo(plotX + plotW, py); }
         ctx.stroke();
 
         // 3. Origin Highlight
         ctx.beginPath(); ctx.strokeStyle = 'rgba(0,240,255,0.2)'; ctx.lineWidth = 2;
-        ctx.moveTo(ML, 0); ctx.lineTo(ML, plotH); // X=0
-        ctx.moveTo(ML, plotH); ctx.lineTo(ML + plotW, plotH); // Y=0
+        ctx.moveTo(plotX, 0); ctx.lineTo(plotX, plotH); // X=0
+        ctx.moveTo(plotX, plotH); ctx.lineTo(plotX + plotW, plotH); // Y=0
         ctx.stroke();
 
         // 4. Axis Labels & Ticks
@@ -310,8 +312,8 @@ export const LensModule: React.FC = () => {
         // X Labels & Ticks
         ctx.textBaseline = 'top'; ctx.textAlign = 'center';
         for (let x = 0; x <= mmW; x += major) {
-            const px = ML + x * scX;
-            if (px >= ML && px <= CW) {
+            const px = plotX + x * scX;
+            if (px >= plotX && px <= CW) {
                 ctx.fillText(`${x}`, px, plotH + 4);
                 // Ticks
                 ctx.beginPath(); ctx.strokeStyle = 'rgba(0,240,255,0.3)';
@@ -324,17 +326,17 @@ export const LensModule: React.FC = () => {
         for (let y = 0; y <= mmH; y += major) {
             const py = plotH - y * scY;
             if (py >= 0 && py <= plotH) {
-                if (y !== 0) ctx.fillText(`${y}`, ML - 6, py);
+                if (y !== 0) ctx.fillText(`${y}`, plotX - 6, py);
                 // Ticks
                 ctx.beginPath(); ctx.strokeStyle = 'rgba(0,240,255,0.3)';
-                ctx.moveTo(ML, py); ctx.lineTo(ML - 3, py); ctx.stroke();
+                ctx.moveTo(plotX, py); ctx.lineTo(plotX - 3, py); ctx.stroke();
             }
         }
 
         // 5. Origin Marker
-        ctx.fillStyle = '#ff007f'; ctx.beginPath(); ctx.arc(ML, plotH, 3, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#ff007f'; ctx.beginPath(); ctx.arc(plotX, plotH, 3, 0, Math.PI * 2); ctx.fill();
         ctx.strokeStyle = 'rgba(255,0,127,0.5)'; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(ML, plotH - 6); ctx.lineTo(ML, plotH); ctx.moveTo(ML, plotH); ctx.lineTo(ML + 6, plotH); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(plotX, plotH - 6); ctx.lineTo(plotX, plotH); ctx.moveTo(plotX, plotH); ctx.lineTo(plotX + 6, plotH); ctx.stroke();
 
         // 6. Detections (Align Tab)
         if (activeTab === 'align' && Array.isArray(detections)) {
@@ -345,12 +347,12 @@ export const LensModule: React.FC = () => {
                 
                 if (d.box) {
                     const [bx, by, bw, bh] = d.box;
-                    ctx.strokeRect(ML + bx * scX, plotH - (by + bh) * scY, bw * scX, bh * scY);
+                    ctx.strokeRect(plotX + bx * scX, plotH - (by + bh) * scY, bw * scX, bh * scY);
                 } else if (d.points && d.points.length > 0) {
                     ctx.beginPath();
-                    ctx.moveTo(ML + d.points[0].x * scX, plotH - d.points[0].y * scY);
+                    ctx.moveTo(plotX + d.points[0].x * scX, plotH - d.points[0].y * scY);
                     for (let i = 1; i < d.points.length; i++) {
-                        ctx.lineTo(ML + d.points[i].x * scX, plotH - d.points[i].y * scY);
+                        ctx.lineTo(plotX + d.points[i].x * scX, plotH - d.points[i].y * scY);
                     }
                     ctx.closePath(); ctx.stroke();
                 }
@@ -359,14 +361,14 @@ export const LensModule: React.FC = () => {
                 ctx.font = '9px monospace';
                 const lx = d.box ? d.box[0] : (d.points?.[0].x ?? 0);
                 const ly = d.box ? d.box[1] + d.box[3] : (d.points?.[0].y ?? 0);
-                ctx.fillText(d.label || d.workpiece_id, ML + lx * scX + 2, plotH - ly * scY - 2);
+                ctx.fillText(d.label || d.workpiece_id, plotX + lx * scX + 2, plotH - ly * scY - 2);
             });
         }
 
         // 7. Calibration Points (Calibrate Tab)
         if (activeTab === 'mapping' && Array.isArray(calibrationPoints)) {
             calibrationPoints.forEach(p => {
-                const px = ML + p.physical_x * scX;
+                const px = plotX + p.physical_x * scX;
                 const py = plotH - p.physical_y * scY;
                 ctx.fillStyle = '#00f0ff';
                 ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2); ctx.fill();

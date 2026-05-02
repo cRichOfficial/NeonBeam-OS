@@ -89,7 +89,7 @@ export const useJobOperationsStore = create<JobOperationsState>((set, get) => ({
         rotation: 0
     }),
 
-    setPlacement: (patch) => set(s => ({ ...patch })),
+    setPlacement: (patch) => set(s => ({ ...s, ...patch })),
 
     setSelectedPaths: (ids) => set({ selectedPathIds: ids }),
 

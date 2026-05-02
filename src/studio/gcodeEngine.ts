@@ -165,14 +165,25 @@ export interface RasterGCodeOptions {
     widthMm: number; heightMm: number;
     ditherMethod: string;
     params: OpParams;
+    rotation?: number; // degrees, rotation around design center
 }
 
 export function generateRasterGCode(opts: RasterGCodeOptions): string {
-    const { ditheredCanvas, posX, posY, widthMm, heightMm, ditherMethod, params } = opts;
+    const { ditheredCanvas, posX, posY, widthMm, heightMm, ditherMethod, params, rotation: rotDeg = 0 } = opts;
     const ctx    = ditheredCanvas.getContext('2d')!;
     const w      = ditheredCanvas.width;
     const h      = ditheredCanvas.height;
     const { data } = ctx.getImageData(0, 0, w, h);
+
+    // Rotation transform around design center
+    const rotRad = -rotDeg * Math.PI / 180;
+    const cosR = Math.cos(rotRad), sinR = Math.sin(rotRad);
+    const cxMm = posX + widthMm / 2, cyMm = posY + heightMm / 2;
+    const rotatePt = (x: number, y: number): { x: number; y: number } => {
+        if (rotDeg === 0) return { x, y };
+        const dx = x - cxMm, dy = y - cyMm;
+        return { x: cxMm + dx * cosR - dy * sinR, y: cyMm + dx * sinR + dy * cosR };
+    };
 
     // pixelS: maps pixel luminance (0=black…255=white) to an S value.
     // - Black pixels (lum 0)   → params.power    (max burn)
@@ -233,10 +244,13 @@ export function generateRasterGCode(opts: RasterGCodeOptions): string {
                 ? xToMm(Math.max(0, segs[0].a - marginPx))
                 : xToMm(Math.min(w - 1, segs[0].a + marginPx));
 
-            out.push(`G0 X${approachX.toFixed(3)} Y${yMm.toFixed(3)}`);
+            const approachPt = rotatePt(approachX, yMm);
+            out.push(`G0 X${approachPt.x.toFixed(3)} Y${approachPt.y.toFixed(3)}`);
             for (const seg of segs) {
-                out.push(`G1 X${xToMm(seg.a).toFixed(3)} S0`);
-                out.push(`G1 X${xToMm(seg.b).toFixed(3)} S${pixelS(seg.b, pixRow)}`);
+                const segA = rotatePt(xToMm(seg.a), yMm);
+                out.push(`G1 X${segA.x.toFixed(3)} Y${segA.y.toFixed(3)} S0`);
+                const segB = rotatePt(xToMm(seg.b), yMm);
+                out.push(`G1 X${segB.x.toFixed(3)} Y${segB.y.toFixed(3)} S${pixelS(seg.b, pixRow)}`);
             }
             out.push('G1 S0');
         }

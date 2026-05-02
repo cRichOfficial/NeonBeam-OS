@@ -151,16 +151,27 @@ export interface MultiOpGCodeOptions {
     posY:       number;
     widthMm:    number;   // physical width of the SVG at current scale
     heightMm:   number;
+    rotation?:  number;   // degrees, rotation around design center
 }
 
 /** Generate combined GCode for all operations in array order (= addition order). */
 export function generateMultiOpGCode(opts: MultiOpGCodeOptions): string {
-    const { svgText, operations, posX, posY, widthMm, heightMm } = opts;
+    const { svgText, operations, posX, posY, widthMm, heightMm, rotation: rotDeg = 0 } = opts;
 
     const { wrap, svgEl, vbW, vbH } = mountSvg(svgText);
 
+    // Rotation transform: rotate every machine-coord point around the design center
+    const rotRad = -rotDeg * Math.PI / 180;
+    const cosR = Math.cos(rotRad), sinR = Math.sin(rotRad);
+    const cxMm = posX + widthMm / 2, cyMm = posY + heightMm / 2;
+    const rotatePt = (pt: Pt): Pt => {
+        if (rotDeg === 0) return pt;
+        const dx = pt.x - cxMm, dy = pt.y - cyMm;
+        return { x: cxMm + dx * cosR - dy * sinR, y: cyMm + dx * sinR + dy * cosR };
+    };
+
     // toMm: SVG user-unit coords → machine mm coords (Y-flip: SVG Y-down, machine Y-up)
-    const toMm = (sx: number, sy: number): Pt => ({
+    const toMm = (sx: number, sy: number): Pt => rotatePt({
         x: posX + (sx / vbW) * widthMm,
         y: posY + heightMm - (sy / vbH) * heightMm,
     });
@@ -299,13 +310,13 @@ export function generateMultiOpGCode(opts: MultiOpGCodeOptions): string {
                             if (segs.length > 0) {
                                 if (!ltr) segs.reverse();
                                 for (const s of segs) {
-                                    const mX0 = (minX / mmToVb) + (s.x0 * resMm) + posX;
+                            const mX0 = (minX / mmToVb) + (s.x0 * resMm) + posX;
                                     const mX1 = (minX / mmToVb) + (s.x1 * resMm) + posX;
-                                    const approachX = ltr ? mX0 : mX1;
-                                    const exitX     = ltr ? mX1 : mX0;
+                                    const approach = rotatePt({ x: ltr ? mX0 : mX1, y: yMm });
+                                    const exit     = rotatePt({ x: ltr ? mX1 : mX0, y: yMm });
                                     
-                                    out.push(`G0 X${approachX.toFixed(3)} Y${yMm.toFixed(3)}`);
-                                    out.push(`G1 X${exitX.toFixed(3)} S${op.params.power}`);
+                                    out.push(`G0 X${approach.x.toFixed(3)} Y${approach.y.toFixed(3)}`);
+                                    out.push(`G1 X${exit.x.toFixed(3)} Y${exit.y.toFixed(3)} S${op.params.power}`);
                                 }
                             }
                         }

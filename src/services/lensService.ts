@@ -44,7 +44,53 @@ class LensService {
 
     async detectObjects(): Promise<DetectionResult[]> {
         const res = await axios.get(`${this.baseUrl}/api/lens/detect`);
-        return res.data;
+        const raw = res.data;
+
+        // The API returns { status, workpieces: [...] } with backend-specific
+        // field names.  Normalize into our DetectionResult interface.
+        const items: any[] = Array.isArray(raw)
+            ? raw                        // legacy: plain array
+            : Array.isArray(raw?.workpieces)
+                ? raw.workpieces         // current: { workpieces: [...] }
+                : [];
+
+        return items.map((wp: any): DetectionResult => {
+            // box_mm = [xmin, ymin, xmax, ymax] → box = [x, y, w, h]
+            let box: [number, number, number, number] | undefined;
+            let centerX: number | undefined;
+            let centerY: number | undefined;
+            if (Array.isArray(wp.box_mm) && wp.box_mm.length >= 4) {
+                const [xmin, ymin, xmax, ymax] = wp.box_mm;
+                box = [xmin, ymin, xmax - xmin, ymax - ymin];
+                centerX = (xmin + xmax) / 2;
+                centerY = (ymin + ymax) / 2;
+            }
+
+            // corners_mm / segmentation_mm are [[x,y], ...] → {x, y}[]
+            const mapPts = (arr: any): Array<{ x: number; y: number }> | undefined => {
+                if (!Array.isArray(arr) || arr.length === 0) return undefined;
+                return arr.map((p: any) =>
+                    Array.isArray(p) ? { x: p[0], y: p[1] } : p
+                );
+            };
+
+            // Prefer segmentation for shape fidelity, fall back to corners
+            const points = mapPts(wp.segmentation_mm) ?? mapPts(wp.corners_mm);
+            // Also keep corners separately for oriented width/height calculation
+            const corners = mapPts(wp.corners_mm);
+
+            return {
+                workpiece_id: wp.id ?? wp.workpiece_id ?? 'unknown',
+                label:        wp.class ?? wp.label,
+                confidence:   wp.confidence,
+                box,
+                points,
+                corners,
+                center_x:     centerX,
+                center_y:     centerY,
+                angle_deg:    wp.angle_deg,
+            };
+        });
     }
 
     async calibrate(tags: CalibrationPoint[]) {

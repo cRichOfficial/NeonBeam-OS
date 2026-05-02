@@ -9,6 +9,8 @@ import { generateRasterGCode, parseGCodeForPreview, type PreviewMove } from '../
 import { parseSvgPaths, generateMultiOpGCode } from '../studio/svgLayerEngine';
 import { useJobOperationsStore } from '../store/jobOperationsStore';
 import type { LayerOp } from '../store/jobOperationsStore';
+import { lensService } from '../services/lensService';
+import type { DetectionResult } from '../types/lens';
 
 const _COMM_API_FALLBACK = '';
 
@@ -82,6 +84,7 @@ export const StudioModule: React.FC = () => {
     const minor       = useAppSettingsStore(s => s.settings.minorSpacing) || 10;
     const feedUnits   = useAppSettingsStore(s => s.settings.feedUnits);
     const coreApiUrl  = useAppSettingsStore(s => s.settings.coreApiUrl) || _COMM_API_FALLBACK;
+    const lensApiUrl  = useAppSettingsStore(s => s.settings.lensApiUrl);
     const maxSpindleS = useAppSettingsStore(s => s.settings.maxSpindleS) || 1000;  // mirrors $30
     const { presets } = usePresetsStore();
 
@@ -181,8 +184,10 @@ export const StudioModule: React.FC = () => {
 
     // ── Viewport State (Zoom & Pan) ──
     const [viewZoom,    setViewZoom]    = useState(1);
+    // viewOffsetX initialized to 0 — corrected to center on first render via useEffect
     const [viewOffsetX, setViewOffsetX] = useState(0);
     const [viewOffsetY, setViewOffsetY] = useState(0);
+    const viewInitialized = useRef(false);
     const lastPinchDist = useRef<number | null>(null);
     const pointers      = useRef<Map<number, {x: number, y: number}>>(new Map());
     const isPanning     = useRef(false);
@@ -198,6 +203,21 @@ export const StudioModule: React.FC = () => {
     const [isDragOver,  setIsDragOver]  = useState(false);
     const [renderTick,  setRenderTick]  = useState(0);
 
+    // ── Place with Lens Overlay ──
+    const [showLensOverlay,    setShowLensOverlay]    = useState(false);
+    const [lensDetections,     setLensDetections]     = useState<DetectionResult[]>([]);
+    const [selectedDetId,      setSelectedDetId]      = useState<string | null>(null);
+    const [lensAlignCenter,    setLensAlignCenter]    = useState(true);
+    const [lensAutoSize,       setLensAutoSize]       = useState(true);
+    const [lensMargin,         setLensMargin]         = useState(5);   // mm
+    const [lensRotOffset,      setLensRotOffset]      = useState(0);   // extra °
+    const [lensRotStep,        setLensRotStep]        = useState(90);  // rotation increment
+    const [lensIsDetecting,    setLensIsDetecting]    = useState(false);
+    const [lensZoom,           setLensZoom]           = useState(1);
+    const [lensOffX,           setLensOffX]           = useState(0);   // canvas px
+    const [lensOffY,           setLensOffY]           = useState(0);   // canvas px
+    const lensCanvasRef = useRef<HTMLCanvasElement>(null);
+
     // ── Refs ──
     const canvasRef    = useRef<HTMLCanvasElement>(null);
     // Uniform scale: 1 mm maps to the same number of pixels on both axes
@@ -207,13 +227,23 @@ export const StudioModule: React.FC = () => {
     // Actual pixel dimensions of the plot area (may be larger than DW×DH when zoomed)
     const plotW  = scX * mmW;
     const plotH  = scY * mmH;
+    // Horizontal centering offset: center the plot in the available drawable area
+    const centerOffsetX = (DW - baseSc * mmW) / 2;
 
     const bumpRender = useCallback(() => setRenderTick(t => t + 1), []);
 
     const resetView = useCallback(() => {
-        setViewZoom(1); setViewOffsetX(0); setViewOffsetY(0);
+        setViewZoom(1); setViewOffsetX(centerOffsetX); setViewOffsetY(0);
         bumpRender();
-    }, [bumpRender]);
+    }, [bumpRender, centerOffsetX]);
+
+    // Center the grid on first render
+    useEffect(() => {
+        if (!viewInitialized.current) {
+            viewInitialized.current = true;
+            setViewOffsetX(centerOffsetX);
+        }
+    }, [centerOffsetX]);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const designImgRef = useRef<HTMLImageElement | null>(null);
@@ -285,6 +315,352 @@ export const StudioModule: React.FC = () => {
         }
     }, [ditherMethod, fileKind, bumpRender]);
 
+    // ── Place with Lens: helpers ──
+
+    /**
+     * Compute base physical size of the loaded design at 100% scale (mm).
+     * physSize() bakes in the current scalePct, so we divide it back out.
+     */
+    const baseMmSize = (): { w: number; h: number } => {
+        const { w, h } = physSize();
+        const pct = scalePct || 100;
+        return { w: w / (pct / 100), h: h / (pct / 100) };
+    };
+
+    /**
+     * Pure function: given a detection and the current overlay toggles,
+     * return the new placement values to commit or preview.
+     */
+    const calcLensPlacement = useCallback((
+        d: DetectionResult,
+        baseW: number,
+        baseH: number,
+        alignCenter: boolean,
+        autoSize: boolean,
+        marginMm: number,
+        rotOffset: number,
+    ): { posX: number; posY: number; scalePct: number; rotation: number } => {
+        const [bx = 0, by = 0, bw = 10, bh = 10] = d.box ?? [0, 0, 10, 10];
+        const cx = d.center_x ?? (bx + bw / 2);
+        const cy = d.center_y ?? (by + bh / 2);
+        const detRot = d.angle_deg ?? 0;
+
+        // Compute true oriented workpiece dimensions from corners when available.
+        // The axis-aligned bbox (bw × bh) inflates dimensions for rotated objects.
+        let wpW = bw, wpH = bh;
+        if (d.corners && d.corners.length >= 4) {
+            const c = d.corners;
+            // Edge lengths of the oriented bounding box
+            const edge0 = Math.hypot(c[1].x - c[0].x, c[1].y - c[0].y);
+            const edge1 = Math.hypot(c[2].x - c[1].x, c[2].y - c[1].y);
+            // Longer edge = width, shorter = height (conventional)
+            wpW = Math.max(edge0, edge1);
+            wpH = Math.min(edge0, edge1);
+        }
+
+        let newScale = scalePct;
+        let newW = baseW * (newScale / 100);
+        let newH = baseH * (newScale / 100);
+
+        if (autoSize && baseW > 0 && baseH > 0) {
+            const targetW = Math.max(1, wpW - 2 * marginMm);
+            const targetH = Math.max(1, wpH - 2 * marginMm);
+            // Uniform scale — fit within both dimensions, preserving aspect ratio
+            newScale = Math.min((targetW / baseW) * 100, (targetH / baseH) * 100);
+            newW = baseW * (newScale / 100);
+            newH = baseH * (newScale / 100);
+        }
+
+        let newPosX = posX, newPosY = posY;
+        if (alignCenter) {
+            newPosX = cx - newW / 2;
+            newPosY = cy - newH / 2;
+        }
+
+        return {
+            posX: newPosX,
+            posY: newPosY,
+            scalePct: newScale,
+            rotation: detRot + rotOffset,
+        };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [posX, posY, scalePct]);
+
+    /** Fetch detections from the Lens API and populate the overlay list. */
+    const runLensDetect = useCallback(async () => {
+        setLensIsDetecting(true);
+        try {
+            const results = await lensService.detectObjects();
+            setLensDetections(Array.isArray(results) ? results : []);
+        } catch (err) {
+            console.error('Lens detect failed', err);
+            setLensDetections([]);
+        } finally {
+            setLensIsDetecting(false);
+        }
+    }, []);
+
+    /** Open the overlay and auto-detect immediately. */
+    const openLensOverlay = useCallback(() => {
+        setSelectedDetId(null);
+        setLensDetections([]);
+        setLensRotOffset(0);
+        setLensZoom(1);
+        setLensOffX(0);
+        setLensOffY(0);
+        setShowLensOverlay(true);
+        // small delay so overlay renders before the async call
+        setTimeout(runLensDetect, 80);
+    }, [runLensDetect]);
+
+    /** Handle tap on the overlay canvas — select nearest detected object, zoom to fit. */
+    const handleLensCanvasClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+        const canvas = lensCanvasRef.current;
+        if (!canvas) return;
+        const rect = canvas.getBoundingClientRect();
+        const scaleRatio = canvas.width / rect.width;
+        const rawCx = (e.clientX - rect.left) * scaleRatio;
+        const rawCy = (e.clientY - rect.top)  * scaleRatio;
+
+        // Reverse the current zoom/pan transform to get logical canvas coords
+        const logCx = (rawCx - lensOffX) / lensZoom;
+        const logCy = (rawCy - lensOffY) / lensZoom;
+
+        const lBaseSc = Math.min((CW - ML) / mmW, (CH - MB) / mmH);
+        const lPlotW  = lBaseSc * mmW;
+        const lPlotH  = lBaseSc * mmH;
+        const lML     = ML + (DW - lPlotW) / 2;
+
+        const mmX = (logCx - lML) / lBaseSc;
+        const mmY = (lPlotH - logCy) / lBaseSc;
+
+        const THRESH = 30; // mm — generous for finger taps
+        let best: string | null = null;
+        let bestDist = THRESH;
+
+        for (const d of lensDetections) {
+            if (d.box) {
+                const [bx, by, bw, bh] = d.box;
+                const dcx = bx + bw / 2, dcy = by + bh / 2;
+                if (mmX >= bx - 5 && mmX <= bx + bw + 5 && mmY >= by - 5 && mmY <= by + bh + 5) {
+                    const dist = Math.hypot(mmX - dcx, mmY - dcy);
+                    if (dist < bestDist) { bestDist = dist; best = d.workpiece_id; }
+                }
+            } else if (d.points && d.points.length > 0) {
+                const dcx = d.points.reduce((a, p) => a + p.x, 0) / d.points.length;
+                const dcy = d.points.reduce((a, p) => a + p.y, 0) / d.points.length;
+                const dist = Math.hypot(mmX - dcx, mmY - dcy);
+                if (dist < bestDist) { bestDist = dist; best = d.workpiece_id; }
+            }
+        }
+
+        // Tap same → deselect + reset zoom;  Tap nothing → same;  Tap new → zoom in
+        if (!best || best === selectedDetId) {
+            setSelectedDetId(null);
+            setLensZoom(1);
+            setLensOffX(0);
+            setLensOffY(0);
+        } else {
+            setSelectedDetId(best);
+            // Compute bounding extent of the object in mm
+            const d = lensDetections.find(det => det.workpiece_id === best)!;
+            let objCx: number, objCy: number, objW: number, objH: number;
+            if (d.points && d.points.length > 0) {
+                const xs = d.points.map(p => p.x);
+                const ys = d.points.map(p => p.y);
+                const minX = Math.min(...xs), maxX = Math.max(...xs);
+                const minY = Math.min(...ys), maxY = Math.max(...ys);
+                objCx = (minX + maxX) / 2;
+                objCy = (minY + maxY) / 2;
+                objW  = maxX - minX;
+                objH  = maxY - minY;
+            } else if (d.box) {
+                const [bx, by, bw, bh] = d.box;
+                objCx = bx + bw / 2;
+                objCy = by + bh / 2;
+                objW  = bw;
+                objH  = bh;
+            } else return;
+
+            const padMm = 30; // mm of visual padding around the object
+            const zoomW = (CW - ML) / ((objW + padMm * 2) * lBaseSc);
+            const zoomH = (CH - MB) / ((objH + padMm * 2) * lBaseSc);
+            const newZoom = Math.min(zoomW, zoomH, 4); // cap at 4×
+
+            // Object center in base (unzoomed) canvas pixel coords
+            const objCxPx = lML + objCx * lBaseSc;
+            const objCyPx = lPlotH - objCy * lBaseSc;
+
+            // Offset so the object center lands at the canvas center
+            setLensZoom(newZoom);
+            setLensOffX(CW / 2 - objCxPx * newZoom);
+            setLensOffY(CH / 2 - objCyPx * newZoom);
+        }
+    }, [lensDetections, selectedDetId, lensZoom, lensOffX, lensOffY, mmW, mmH]);
+
+    /** Commit the computed placement to the store and close the overlay. */
+    const applyLensPlacement = useCallback(() => {
+        const sel = lensDetections.find(d => d.workpiece_id === selectedDetId);
+        if (!sel) return;
+        const { w: baseW, h: baseH } = baseMmSize();
+        const placement = calcLensPlacement(sel, baseW, baseH, lensAlignCenter, lensAutoSize, lensMargin, lensRotOffset);
+        setPlacement(placement);
+        bumpRender();
+        setShowLensOverlay(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [lensDetections, selectedDetId, lensAlignCenter, lensAutoSize, lensMargin, lensRotOffset, calcLensPlacement, bumpRender]);
+
+    // ── Overlay canvas: grid + detections + live ghost preview ──
+    useEffect(() => {
+        const canvas = lensCanvasRef.current;
+        if (!canvas || !showLensOverlay) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        const lBaseSc = Math.min((CW - ML) / mmW, (CH - MB) / mmH);
+        const lPlotW  = lBaseSc * mmW;
+        const lPlotH  = lBaseSc * mmH;
+        // Center the plot area horizontally
+        const lML     = ML + (DW - lPlotW) / 2;
+
+        // 1. Background (always full canvas, before zoom transform)
+        ctx.fillStyle = '#080808'; ctx.fillRect(0, 0, CW, CH);
+
+        // Apply zoom / pan transform — everything below draws in "logical" coords
+        ctx.save();
+        ctx.translate(lensOffX, lensOffY);
+        ctx.scale(lensZoom, lensZoom);
+
+        ctx.fillStyle = '#111111'; ctx.fillRect(lML, 0, lPlotW, lPlotH);
+        ctx.strokeStyle = 'rgba(0,240,255,0.12)'; ctx.lineWidth = 1 / lensZoom;
+        ctx.strokeRect(lML, 0, lPlotW, lPlotH);
+
+        // 2. Minor grid
+        ctx.beginPath(); ctx.strokeStyle = 'rgba(0,240,255,0.03)'; ctx.lineWidth = 0.5;
+        for (let x = 0; x <= mmW + 1; x += minor) { const px = lML + x * lBaseSc; ctx.moveTo(px, 0); ctx.lineTo(px, lPlotH); }
+        for (let y = 0; y <= mmH + 1; y += minor) { const py = lPlotH - y * lBaseSc; ctx.moveTo(lML, py); ctx.lineTo(lML + lPlotW, py); }
+        ctx.stroke();
+
+        // 3. Major grid
+        ctx.beginPath(); ctx.strokeStyle = 'rgba(0,240,255,0.09)'; ctx.lineWidth = 1;
+        for (let x = 0; x <= mmW; x += major) { const px = lML + x * lBaseSc; ctx.moveTo(px, 0); ctx.lineTo(px, lPlotH); }
+        for (let y = 0; y <= mmH; y += major) { const py = lPlotH - y * lBaseSc; ctx.moveTo(lML, py); ctx.lineTo(lML + lPlotW, py); }
+        ctx.stroke();
+
+        // 4. Axes
+        ctx.beginPath(); ctx.strokeStyle = 'rgba(0,240,255,0.2)'; ctx.lineWidth = 2;
+        ctx.moveTo(lML, 0); ctx.lineTo(lML, lPlotH);
+        ctx.moveTo(lML, lPlotH); ctx.lineTo(lML + lPlotW, lPlotH);
+        ctx.stroke();
+
+        // 5. Axis labels
+        ctx.font = 'bold 9px ui-monospace,monospace';
+        ctx.fillStyle = 'rgba(0,200,220,0.55)';
+        ctx.textBaseline = 'top'; ctx.textAlign = 'center';
+        for (let x = 0; x <= mmW; x += major) {
+            const px = lML + x * lBaseSc;
+            if (px >= lML && px <= CW) ctx.fillText(`${x}`, px, lPlotH + 3);
+        }
+        ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+        for (let y = major; y <= mmH; y += major) {
+            const py = lPlotH - y * lBaseSc;
+            if (py >= 0 && py <= lPlotH) ctx.fillText(`${y}`, lML - 4, py);
+        }
+
+        // 6. Origin dot
+        ctx.fillStyle = '#ff007f';
+        ctx.beginPath(); ctx.arc(lML, lPlotH, 3, 0, Math.PI * 2); ctx.fill();
+
+        // 7. Detected objects
+        lensDetections.forEach(d => {
+            const isSel = d.workpiece_id === selectedDetId;
+            ctx.strokeStyle = isSel ? '#00f0ff' : 'rgba(0,240,255,0.35)';
+            ctx.lineWidth   = isSel ? 2 : 1;
+
+            // Prefer segmentation/corners outline (shows true rotated shape)
+            if (d.points && d.points.length > 0) {
+                ctx.beginPath();
+                ctx.moveTo(lML + d.points[0].x * lBaseSc, lPlotH - d.points[0].y * lBaseSc);
+                d.points.slice(1).forEach(p => ctx.lineTo(lML + p.x * lBaseSc, lPlotH - p.y * lBaseSc));
+                ctx.closePath(); ctx.stroke();
+                if (isSel) {
+                    ctx.fillStyle = 'rgba(0,240,255,0.06)';
+                    ctx.fill();
+                }
+            } else if (d.box) {
+                // Fallback: axis-aligned bounding box
+                const [bx, by, bw, bh] = d.box;
+                ctx.strokeRect(lML + bx * lBaseSc, lPlotH - (by + bh) * lBaseSc, bw * lBaseSc, bh * lBaseSc);
+            }
+
+            // Crosshair at object center when selected
+            if (isSel) {
+                const cx = d.center_x ?? (d.box ? d.box[0] + d.box[2] / 2 : 0);
+                const cy = d.center_y ?? (d.box ? d.box[1] + d.box[3] / 2 : 0);
+                const ocx = lML + cx * lBaseSc;
+                const ocy = lPlotH - cy * lBaseSc;
+                ctx.beginPath(); ctx.strokeStyle = 'rgba(0,240,255,0.5)'; ctx.lineWidth = 1;
+                ctx.moveTo(ocx - 6, ocy); ctx.lineTo(ocx + 6, ocy);
+                ctx.moveTo(ocx, ocy - 6); ctx.lineTo(ocx, ocy + 6);
+                ctx.stroke();
+            }
+
+            // label
+            ctx.fillStyle = isSel ? '#00f0ff' : 'rgba(0,240,255,0.5)';
+            ctx.font = '8px monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+            const lx = d.box ? d.box[0] : (d.points?.[0].x ?? 0);
+            const ly = d.box ? d.box[1] + d.box[3] : (d.points?.[0].y ?? 0);
+            ctx.fillText(d.label || d.workpiece_id, lML + lx * lBaseSc + 2, lPlotH - ly * lBaseSc - 2);
+        });
+
+        // 8. Ghost image preview
+        const sel = lensDetections.find(d => d.workpiece_id === selectedDetId);
+        if (sel && fileKind) {
+            const { w: baseW, h: baseH } = baseMmSize();
+            const placement = calcLensPlacement(sel, baseW, baseH, lensAlignCenter, lensAutoSize, lensMargin, lensRotOffset);
+            const gW = baseW * (placement.scalePct / 100);
+            const gH = baseH * (placement.scalePct / 100);
+            // center of ghost in canvas pixels
+            const gcx_mm = placement.posX + gW / 2;
+            const gcy_mm = placement.posY + gH / 2;
+            const gcx_px = lML + gcx_mm * lBaseSc;
+            const gcy_px = lPlotH - gcy_mm * lBaseSc;
+            const gWpx = gW * lBaseSc;
+            const gHpx = gH * lBaseSc;
+
+            ctx.save();
+            ctx.translate(gcx_px, gcy_px);
+            ctx.rotate(placement.rotation * Math.PI / 180); // positive = CCW in machine coords
+            ctx.fillStyle   = 'rgba(0,240,255,0.12)';
+            ctx.strokeStyle = '#00f0ff';
+            ctx.lineWidth   = 1.5;
+            ctx.setLineDash([4, 3]);
+            ctx.fillRect(-gWpx / 2, -gHpx / 2, gWpx, gHpx);
+            ctx.strokeRect(-gWpx / 2, -gHpx / 2, gWpx, gHpx);
+            ctx.setLineDash([]);
+            // center crosshair
+            ctx.strokeStyle = 'rgba(0,240,255,0.8)'; ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(-8, 0); ctx.lineTo(8, 0);
+            ctx.moveTo(0, -8); ctx.lineTo(0, 8);
+            ctx.stroke();
+            // rotation tick
+            if (placement.rotation !== 0) {
+                ctx.strokeStyle = 'rgba(255,200,0,0.8)'; ctx.lineWidth = 1.5;
+                ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -gHpx / 2 - 6); ctx.stroke();
+                ctx.fillStyle = 'rgba(255,200,0,0.9)';
+                ctx.font = 'bold 8px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+                ctx.fillText(`${placement.rotation.toFixed(0)}°`, 0, -gHpx / 2 - 8);
+            }
+            ctx.restore();
+        }
+
+        // Restore zoom transform
+        ctx.restore();
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [lensDetections, selectedDetId, lensAlignCenter, lensAutoSize, lensMargin, lensRotOffset, showLensOverlay, lensZoom, lensOffX, lensOffY, mmW, mmH, major, minor, fileKind]);
+
     // ── Canvas draw ──
     useEffect(() => {
         const canvas = canvasRef.current;
@@ -334,11 +710,20 @@ export const StudioModule: React.FC = () => {
             const dwPx  = dWmm * scX;
             const dhPx  = dHmm * scY;
 
+            // Apply rotation around the image center
+            const rotRad = rotation * Math.PI / 180;
+            const imgCxPx = dxPx + dwPx / 2;
+            const imgCyPx = dyPx + dhPx / 2;
+
             if (activeTab === 'gcode') {
                 // Faint design background for context
                 ctx.globalAlpha = 0.18;
-                if (fileKind === 'bitmap' && ditheredRef.current) ctx.drawImage(ditheredRef.current, dxPx, dyPx, dwPx, dhPx);
-                else ctx.drawImage(img, dxPx, dyPx, dwPx, dhPx);
+                ctx.save();
+                ctx.translate(imgCxPx, imgCyPx);
+                ctx.rotate(rotRad);
+                if (fileKind === 'bitmap' && ditheredRef.current) ctx.drawImage(ditheredRef.current, -dwPx / 2, -dhPx / 2, dwPx, dhPx);
+                else ctx.drawImage(img, -dwPx / 2, -dhPx / 2, dwPx, dhPx);
+                ctx.restore();
                 ctx.globalAlpha = 1;
 
                 // GCode toolpath overlay — cut=pink, fill=purple, bitmap=cyan, rapid=gray
@@ -391,39 +776,45 @@ export const StudioModule: React.FC = () => {
                     ctx.fillText(item.label, CW - 6, ly);
                 });
             } else {
-                // Design preview
+                // Design preview — apply rotation around image center
+                ctx.save();
+                ctx.translate(imgCxPx, imgCyPx);
+                ctx.rotate(rotRad);
+
                 if (fileKind === 'svg') {
                     // Dark gray artboard backing so black strokes/fills are visible
                     ctx.fillStyle = '#2a2a2a';
-                    ctx.fillRect(dxPx, dyPx, dwPx, dhPx);
+                    ctx.fillRect(-dwPx / 2, -dhPx / 2, dwPx, dhPx);
 
                     ctx.globalAlpha = 0.88;
-                    ctx.drawImage(img, dxPx, dyPx, dwPx, dhPx);
+                    ctx.drawImage(img, -dwPx / 2, -dhPx / 2, dwPx, dhPx);
                     ctx.globalAlpha = 1;
                     // Dashed artboard boundary — SVG document page extents (not a cut line)
                     const hasCut  = operations.some(o => o.opType === 'cut');
                     const hasFill = operations.some(o => o.opType === 'fill');
                     ctx.strokeStyle = hasCut ? 'rgba(255,0,127,0.5)' : hasFill ? 'rgba(112,0,255,0.5)' : 'rgba(100,100,100,0.35)';
                     ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
-                    ctx.strokeRect(dxPx, dyPx, dwPx, dhPx); ctx.setLineDash([]);
+                    ctx.strokeRect(-dwPx / 2, -dhPx / 2, dwPx, dhPx); ctx.setLineDash([]);
                     // Label
                     ctx.font = '7px ui-monospace,monospace';
                     ctx.fillStyle = 'rgba(200,100,160,0.55)';
                     ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
-                    ctx.fillText('SVG artboard', dxPx + 3, dyPx - 2);
+                    ctx.fillText('SVG artboard', -dwPx / 2 + 3, -dhPx / 2 - 2);
 
                 } else {
                     const drawSrc = ditheredRef.current ?? img;
                     // White backing mat so transparent areas read as "no burn", not dark canvas
                     ctx.fillStyle = '#ffffff';
                     ctx.globalAlpha = 0.92;
-                    ctx.fillRect(dxPx, dyPx, dwPx, dhPx);
+                    ctx.fillRect(-dwPx / 2, -dhPx / 2, dwPx, dhPx);
                     ctx.globalAlpha = 0.9; ctx.imageSmoothingEnabled = false;
-                    ctx.drawImage(drawSrc, dxPx, dyPx, dwPx, dhPx);
+                    ctx.drawImage(drawSrc, -dwPx / 2, -dhPx / 2, dwPx, dhPx);
                     ctx.imageSmoothingEnabled = true; ctx.globalAlpha = 1;
                     ctx.strokeStyle = 'rgba(0,240,255,0.55)'; ctx.lineWidth = 1;
-                    ctx.setLineDash([4,3]); ctx.strokeRect(dxPx, dyPx, dwPx, dhPx); ctx.setLineDash([]);
+                    ctx.setLineDash([4,3]); ctx.strokeRect(-dwPx / 2, -dhPx / 2, dwPx, dhPx); ctx.setLineDash([]);
                 }
+
+                ctx.restore();
             }
         }
 
@@ -650,14 +1041,14 @@ export const StudioModule: React.FC = () => {
                     alert('Add at least one laser operation in the SVG Paths panel before generating GCode.');
                     return;
                 }
-                gcode = generateMultiOpGCode({ svgText: svgTextRef.current, operations, posX, posY, widthMm, heightMm });
+                gcode = generateMultiOpGCode({ svgText: svgTextRef.current, operations, posX, posY, widthMm, heightMm, rotation });
             } else if (fileKind === 'bitmap' && (ditheredRef.current || srcCanvasRef.current)) {
                 const canvas = ditheredRef.current ?? srcCanvasRef.current!;
                 const params = {
                     power: opPower, minPower: opMinPower, rate: opRate, passes: opPasses, airAssist: opAirAssist,
                     margin: opMargin, lineDistance: opLineDistance, lineAngle: opLineAngle,
                 };
-                gcode = generateRasterGCode({ ditheredCanvas: canvas, posX, posY, widthMm, heightMm, ditherMethod, params });
+                gcode = generateRasterGCode({ ditheredCanvas: canvas, posX, posY, widthMm, heightMm, ditherMethod, params, rotation });
             }
 
             if (!gcode) return;
@@ -1269,8 +1660,27 @@ export const StudioModule: React.FC = () => {
                                     </p>
                                 )}
                             </div>
+                            {/* Place with Lens — only shown when Lens module is configured */}
+                            {lensApiUrl && (
+                                <button
+                                    id="place-with-lens-btn"
+                                    onClick={openLensOverlay}
+                                    className="mt-3 w-full py-3 flex items-center justify-center gap-2 bg-gradient-to-r from-miami-cyan/20 to-miami-purple/20 border border-miami-cyan/40 hover:border-miami-cyan text-miami-cyan font-black rounded-xl text-sm transition-all active:scale-[0.97] shadow-[0_0_10px_rgba(0,240,255,0.08)] hover:shadow-[0_0_18px_rgba(0,240,255,0.2)]"
+                                >
+                                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.2"/>
+                                        <circle cx="8" cy="8" r="2.5" stroke="currentColor" strokeWidth="1.2"/>
+                                        <line x1="8" y1="1" x2="8" y2="3.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                                        <line x1="8" y1="12.5" x2="8" y2="15" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                                        <line x1="1" y1="8" x2="3.5" y2="8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                                        <line x1="12.5" y1="8" x2="15" y2="8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                                    </svg>
+                                    Place with Lens
+                                </button>
+                            )}
                         </div>
                     )}
+
 
                     {/* Generate GCode */}
                     {fileKind && (
@@ -1411,6 +1821,204 @@ export const StudioModule: React.FC = () => {
                     <p className="text-gray-400 text-[10px] font-mono mt-2 uppercase tracking-widest text-center px-6">
                         Optimizing toolpaths &amp; power levels...
                     </p>
+                </div>
+            )}
+
+            {/* ── PLACE WITH LENS OVERLAY ── */}
+            {showLensOverlay && (
+                <div className="fixed inset-0 z-[200] flex flex-col bg-[#070712] overflow-hidden">
+
+                    {/* ── Header ── */}
+                    <div className="flex-shrink-0 h-14 flex items-center gap-3 px-4 bg-black/80 border-b border-gray-800 backdrop-blur-xl">
+                        <button
+                            id="lens-overlay-close-btn"
+                            onClick={() => setShowLensOverlay(false)}
+                            className="flex items-center justify-center w-10 h-10 rounded-xl bg-white/5 border border-gray-700 text-gray-300 active:scale-95 transition-all"
+                        >
+                            <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M11 4L6 9L11 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        </button>
+                        <div className="flex-1 min-w-0">
+                            <p className="text-sm font-black text-miami-cyan tracking-tight">Place with Lens</p>
+                            <p className="text-[10px] text-gray-500 font-mono">
+                                {lensDetections.length > 0
+                                    ? `${lensDetections.length} object${lensDetections.length !== 1 ? 's' : ''} detected — tap to select`
+                                    : 'Tap ↻ to detect objects'}
+                            </p>
+                        </div>
+                        <button
+                            id="lens-overlay-refresh-btn"
+                            onClick={runLensDetect}
+                            disabled={lensIsDetecting}
+                            className="flex items-center justify-center w-10 h-10 rounded-xl bg-miami-cyan/10 border border-miami-cyan/30 text-miami-cyan disabled:opacity-40 active:scale-95 transition-all"
+                        >
+                            {lensIsDetecting
+                                ? <div className="w-4 h-4 rounded-full border-2 border-miami-cyan border-t-transparent animate-spin"/>
+                                : <span className="text-lg leading-none">↻</span>}
+                        </button>
+                    </div>
+
+                    {/* ── Scrollable body ── */}
+                    <div className="flex-1 overflow-y-auto overscroll-contain">
+
+                        {/* Canvas */}
+                        <div className="flex-shrink-0 bg-black/60 px-2 pt-2 pb-1">
+                            <canvas
+                                ref={lensCanvasRef}
+                                id="lens-overlay-canvas"
+                                width={CW}
+                                height={CH}
+                                className="w-full rounded-xl cursor-crosshair touch-manipulation"
+                                onClick={handleLensCanvasClick}
+                            />
+                            {lensIsDetecting && lensDetections.length === 0 && (
+                                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                    <span className="text-miami-cyan text-xs font-black animate-pulse uppercase tracking-widest">Detecting…</span>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Selected indicator */}
+                        <div className="px-4 py-2 flex items-center gap-2 min-h-[40px]">
+                            {selectedDetId ? (
+                                <>
+                                    <div className="w-2 h-2 rounded-full bg-miami-cyan animate-pulse flex-shrink-0"/>
+                                    <span className="text-[11px] text-miami-cyan font-bold truncate">
+                                        {lensDetections.find(d => d.workpiece_id === selectedDetId)?.label || selectedDetId}
+                                    </span>
+                                    <span className="ml-auto text-[10px] text-gray-500 font-mono flex-shrink-0">Selected</span>
+                                </>
+                            ) : (
+                                <span className="text-[11px] text-gray-600 font-bold">No object selected — tap one above</span>
+                            )}
+                        </div>
+
+                        {/* Options */}
+                        <div className="px-4 pb-4 space-y-3">
+
+                            {/* Align Center toggle */}
+                            <div className="flex flex-col gap-1.5">
+                                <span className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">Align Center</span>
+                                <div className="flex bg-black/60 p-1 rounded-xl border border-gray-800 gap-1">
+                                    <button
+                                        id="lens-align-on-btn"
+                                        onClick={() => setLensAlignCenter(true)}
+                                        className={`flex-1 py-3 rounded-lg text-sm font-black transition-all ${
+                                            lensAlignCenter
+                                                ? 'bg-miami-cyan text-black shadow-[0_0_10px_rgba(0,240,255,0.25)]'
+                                                : 'text-gray-500'
+                                        }`}
+                                    >ON</button>
+                                    <button
+                                        id="lens-align-off-btn"
+                                        onClick={() => setLensAlignCenter(false)}
+                                        className={`flex-1 py-3 rounded-lg text-sm font-black transition-all ${
+                                            !lensAlignCenter
+                                                ? 'bg-gray-700 text-white'
+                                                : 'text-gray-500'
+                                        }`}
+                                    >OFF</button>
+                                </div>
+                            </div>
+
+                            {/* Auto-Size toggle */}
+                            <div className="flex flex-col gap-1.5">
+                                <span className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">Auto-Size to Object</span>
+                                <div className="flex bg-black/60 p-1 rounded-xl border border-gray-800 gap-1">
+                                    <button
+                                        id="lens-autosize-on-btn"
+                                        onClick={() => setLensAutoSize(true)}
+                                        className={`flex-1 py-3 rounded-lg text-sm font-black transition-all ${
+                                            lensAutoSize
+                                                ? 'bg-miami-cyan text-black shadow-[0_0_10px_rgba(0,240,255,0.25)]'
+                                                : 'text-gray-500'
+                                        }`}
+                                    >ON</button>
+                                    <button
+                                        id="lens-autosize-off-btn"
+                                        onClick={() => setLensAutoSize(false)}
+                                        className={`flex-1 py-3 rounded-lg text-sm font-black transition-all ${
+                                            !lensAutoSize
+                                                ? 'bg-gray-700 text-white'
+                                                : 'text-gray-500'
+                                        }`}
+                                    >OFF</button>
+                                </div>
+                            </div>
+
+                            {/* Margin */}
+                            <div className={`flex items-center gap-3 transition-opacity ${lensAutoSize ? 'opacity-100' : 'opacity-30 pointer-events-none'}`}>
+                                <span className="text-[10px] text-gray-500 uppercase font-bold tracking-widest flex-shrink-0">Margin</span>
+                                <NumericInput
+                                    id="lens-margin-input"
+                                    value={lensMargin}
+                                    onChange={v => setLensMargin(Math.max(0, v))}
+                                    min={0}
+                                    className="flex-1 bg-black border border-gray-700 focus:border-miami-cyan rounded-xl p-3 text-white text-sm font-mono outline-none transition-colors"
+                                />
+                                <span className="text-[11px] text-gray-500 font-bold flex-shrink-0">mm</span>
+                            </div>
+
+                            {/* Rotation */}
+                            <div className="flex flex-col gap-1.5">
+                                <span className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">Rotation</span>
+                                {/* Step picker */}
+                                <div className="flex bg-black/60 p-1 rounded-xl border border-gray-800 gap-1">
+                                    {[0.1, 1, 10, 90].map(step => (
+                                        <button
+                                            key={step}
+                                            onClick={() => setLensRotStep(step)}
+                                            className={`flex-1 py-2 rounded-lg text-[11px] font-black transition-all ${
+                                                lensRotStep === step
+                                                    ? 'bg-miami-cyan text-black shadow-[0_0_8px_rgba(0,240,255,0.2)]'
+                                                    : 'text-gray-500'
+                                            }`}
+                                        >{step}°</button>
+                                    ))}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        id="lens-rotate-minus-btn"
+                                        onClick={() => setLensRotOffset(r => +(r - lensRotStep).toFixed(2))}
+                                        className="flex-1 py-3 bg-black/60 border border-gray-700 rounded-xl text-white font-black text-base active:scale-95 transition-all"
+                                    >−{lensRotStep}°</button>
+                                    <div className="flex flex-col items-center min-w-[70px]">
+                                        <span className="text-miami-cyan font-black text-lg font-mono leading-none">
+                                            {(() => {
+                                                const sel = lensDetections.find(d => d.workpiece_id === selectedDetId);
+                                                const base = sel?.angle_deg ?? 0;
+                                                const total = ((base + lensRotOffset) % 360 + 360) % 360;
+                                                return `${lensRotStep < 1 ? total.toFixed(1) : total.toFixed(0)}°`;
+                                            })()}
+                                        </span>
+                                        <span className="text-[9px] text-gray-600 font-bold mt-0.5">total</span>
+                                    </div>
+                                    <button
+                                        id="lens-rotate-plus-btn"
+                                        onClick={() => setLensRotOffset(r => +(r + lensRotStep).toFixed(2))}
+                                        className="flex-1 py-3 bg-black/60 border border-gray-700 rounded-xl text-white font-black text-base active:scale-95 transition-all"
+                                    >+{lensRotStep}°</button>
+                                </div>
+                                {lensRotOffset !== 0 && (
+                                    <button
+                                        onClick={() => setLensRotOffset(0)}
+                                        className="text-[10px] text-gray-600 hover:text-gray-400 font-bold text-center"
+                                    >↺ Reset rotation offset</button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* ── Sticky Apply Button ── */}
+                    <div className="flex-shrink-0 p-4 bg-black/80 border-t border-gray-800 backdrop-blur-xl">
+                        <button
+                            id="lens-apply-btn"
+                            onClick={applyLensPlacement}
+                            disabled={!selectedDetId}
+                            className="w-full h-14 bg-gradient-to-r from-miami-cyan to-miami-purple text-black font-black rounded-2xl text-base tracking-wide shadow-[0_0_20px_rgba(0,240,255,0.2)] disabled:opacity-30 disabled:cursor-not-allowed active:scale-[0.98] transition-all"
+                        >
+                            {selectedDetId ? '✓  Apply Placement' : 'Select an object first'}
+                        </button>
+                    </div>
                 </div>
             )}
         </div>
