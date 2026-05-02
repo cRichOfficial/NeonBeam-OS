@@ -47,6 +47,7 @@ export const LensModule: React.FC = () => {
     const [tagDpi, setTagDpi] = useState(300);
     const [isBatch, setIsBatch] = useState(false);
     const [paperFormat, setPaperFormat] = useState<'letter' | 'a4'>('letter');
+    const [guideDistanceMm, setGuideDistanceMm] = useState(0);
 
     // ── Lens Calibration State ──
     const [healthStatus, setHealthStatus] = useState<LensHealthResponse | null>(null);
@@ -54,11 +55,20 @@ export const LensModule: React.FC = () => {
     const [lensResult, setLensResult] = useState<LensCalibrationResult | null>(null);
     const [isLensLoading, setIsLensLoading] = useState(false);
     const [lensPreviewKey, setLensPreviewKey] = useState(0);
+    const [showPreviewFlash, setShowPreviewFlash] = useState(false);
 
     // ── Canvas Refs ──
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [renderTick, setRenderTick] = useState(0);
     const bumpRender = useCallback(() => setRenderTick(t => t + 1), []);
+
+    // Flash the capture preview for 2s after each successful capture, then revert to stream
+    useEffect(() => {
+        if (lensPreviewKey === 0) return;
+        setShowPreviewFlash(true);
+        const t = setTimeout(() => setShowPreviewFlash(false), 2000);
+        return () => clearTimeout(t);
+    }, [lensPreviewKey]);
 
     // ── Viewport Logic (Simpler than StudioModule as we don't zoom/pan here yet) ──
     const baseSc = Math.min(DW / mmW, DH / mmH);
@@ -223,6 +233,22 @@ export const LensModule: React.FC = () => {
         } catch (err) {
             console.error('Finish failed', err);
             alert('Lens calibration computation failed.');
+        } finally {
+            setIsLensLoading(false);
+        }
+    };
+
+    const resetLensCalibration = async () => {
+        if (!confirm('This will delete the saved lens calibration. You will need to recalibrate before using Mapping. Continue?')) return;
+        setIsLensLoading(true);
+        try {
+            await lensService.lensCalibrationReset();
+            setLensSession(null);
+            setLensResult(null);
+            await fetchHealthStatus();
+        } catch (err) {
+            console.error('Reset failed', err);
+            alert('Failed to reset lens calibration.');
         } finally {
             setIsLensLoading(false);
         }
@@ -625,13 +651,24 @@ export const LensModule: React.FC = () => {
 
                         {/* Session Controls */}
                         {!lensSession ? (
-                            <button 
-                                onClick={startLensSession} 
-                                disabled={isLensLoading}
-                                className="w-full py-3 bg-miami-cyan text-black font-black rounded-xl shadow-lg shadow-miami-cyan/20 disabled:opacity-30 text-sm uppercase tracking-widest"
-                            >
-                                {isLensLoading ? 'STARTING...' : 'START CALIBRATION SESSION'}
-                            </button>
+                            <div className="flex flex-col gap-2">
+                                <button 
+                                    onClick={startLensSession} 
+                                    disabled={isLensLoading}
+                                    className="w-full py-3 bg-miami-cyan text-black font-black rounded-xl shadow-lg shadow-miami-cyan/20 disabled:opacity-30 text-sm uppercase tracking-widest"
+                                >
+                                    {isLensLoading ? 'STARTING...' : 'START CALIBRATION SESSION'}
+                                </button>
+                                {healthStatus?.lens_calibrated && (
+                                    <button
+                                        onClick={resetLensCalibration}
+                                        disabled={isLensLoading}
+                                        className="w-full py-2 bg-red-500/10 text-red-400 border border-red-500/20 font-bold rounded-xl text-[11px] uppercase tracking-widest hover:bg-red-500/20 transition-all disabled:opacity-30"
+                                    >
+                                        Reset &amp; Recalibrate
+                                    </button>
+                                )}
+                            </div>
                         ) : (
                             <div className="flex flex-col gap-4">
                                 {/* Progress */}
@@ -689,15 +726,62 @@ export const LensModule: React.FC = () => {
                                     </div>
                                 )}
 
-                                {/* Preview Image */}
-                                <div className="bg-black rounded-2xl overflow-hidden border border-gray-800">
-                                    <img 
-                                        key={lensPreviewKey}
-                                        src={lensService.getLensPreviewUrl()} 
-                                        alt="Calibration Preview" 
-                                        className="w-full h-auto"
-                                        onError={(e) => (e.currentTarget.style.display = 'none')}
+                                {/* Live Stream + Zone Grid Overlay */}
+                                <div className="relative bg-black rounded-2xl overflow-hidden border border-gray-800">
+
+                                    {/* Live MJPEG stream — always shown as the base layer */}
+                                    <img
+                                        src={streamUrl}
+                                        alt="Live Camera"
+                                        className="w-full h-auto block"
+                                        onError={() => setIsStreaming(false)}
                                     />
+
+                                    {/* Capture preview flash — shown for 2s after each capture */}
+                                    {showPreviewFlash && (
+                                        <img
+                                            key={lensPreviewKey}
+                                            src={lensService.getLensPreviewUrl()}
+                                            alt="Capture Preview"
+                                            className="absolute inset-0 w-full h-full object-cover animate-pulse"
+                                            onError={(e) => (e.currentTarget.style.display = 'none')}
+                                        />
+                                    )}
+
+                                    {/* 3×3 zone grid overlay */}
+                                    {!showPreviewFlash && (
+                                        <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none">
+                                            {(['top-left','top-center','top-right','center-left','center','center-right','bottom-left','bottom-center','bottom-right']).map(zone => {
+                                                const covered = lensSession.zones_covered.includes(zone);
+                                                return (
+                                                    <div key={zone} className={`border border-white/20 flex items-center justify-center transition-all ${
+                                                        covered
+                                                            ? 'bg-emerald-500/25'
+                                                            : 'bg-black/10'
+                                                    }`}>
+                                                        {covered
+                                                            ? <span className="text-emerald-400 text-lg font-black drop-shadow">✓</span>
+                                                            : <span className="text-white/30 text-[9px] font-bold uppercase tracking-tighter text-center leading-tight px-1">{zone.replace('-', ' ')}</span>
+                                                        }
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+
+                                    {/* Flash badge */}
+                                    {showPreviewFlash && (
+                                        <div className="absolute top-2 left-2 bg-emerald-500/90 text-black text-[10px] font-black uppercase px-2 py-1 rounded-lg">
+                                            Captured ✓
+                                        </div>
+                                    )}
+
+                                    {/* Loading overlay */}
+                                    {isLensLoading && (
+                                        <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                                            <span className="text-miami-cyan font-black text-sm uppercase tracking-widest animate-pulse">Detecting...</span>
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Action Buttons */}
@@ -758,7 +842,7 @@ export const LensModule: React.FC = () => {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-3 gap-3">
+                            <div className="grid grid-cols-4 gap-3">
                                 <div className={isBatch ? 'opacity-30 pointer-events-none' : ''}>
                                     <label className="text-[9px] text-gray-500 uppercase font-bold block mb-1">Tag ID (0-3)</label>
                                     <NumericInput value={tagId} onChange={v => setTagId(Math.min(3, Math.max(0, v)))} min={0} max={3} className="w-full bg-black border border-gray-700 rounded-lg p-2.5 text-xs font-mono" />
@@ -766,6 +850,10 @@ export const LensModule: React.FC = () => {
                                 <div>
                                     <label className="text-[9px] text-gray-500 uppercase font-bold block mb-1">Size (mm)</label>
                                     <NumericInput value={tagSize} onChange={setTagSize} min={10} className="w-full bg-black border border-gray-700 rounded-lg p-2.5 text-xs font-mono" />
+                                </div>
+                                <div>
+                                    <label className="text-[9px] text-gray-500 uppercase font-bold block mb-1">Guide Dist (mm)</label>
+                                    <NumericInput value={guideDistanceMm} onChange={setGuideDistanceMm} min={0} className="w-full bg-black border border-gray-700 rounded-lg p-2.5 text-xs font-mono" />
                                 </div>
                                 <div>
                                     <label className="text-[9px] text-gray-500 uppercase font-bold block mb-1">Paper Size</label>
@@ -782,8 +870,8 @@ export const LensModule: React.FC = () => {
 
                             <a 
                                 href={isBatch 
-                                    ? `${lensApiUrl}/api/apriltag/batch?start_id=0&count=4&size_mm=${tagSize}&dpi=${tagDpi}&paper_width_in=${paperFormat === 'letter' ? 8.5 : 8.27}&paper_height_in=${paperFormat === 'letter' ? 11.0 : 11.69}`
-                                    : `${lensApiUrl}/api/apriltag/generate/${tagId}?size_mm=${tagSize}&dpi=${tagDpi}&paper_width_in=${paperFormat === 'letter' ? 8.5 : 8.27}&paper_height_in=${paperFormat === 'letter' ? 11.0 : 11.69}`
+                                    ? `${lensApiUrl}/api/apriltag/batch?start_id=0&count=4&size_mm=${tagSize}&dpi=${tagDpi}&paper_width_in=${paperFormat === 'letter' ? 8.5 : 8.27}&paper_height_in=${paperFormat === 'letter' ? 11.0 : 11.69}${guideDistanceMm > 0 ? `&guide_distance_mm=${guideDistanceMm}` : ''}`
+                                    : `${lensApiUrl}/api/apriltag/generate/${tagId}?size_mm=${tagSize}&dpi=${tagDpi}&paper_width_in=${paperFormat === 'letter' ? 8.5 : 8.27}&paper_height_in=${paperFormat === 'letter' ? 11.0 : 11.69}${guideDistanceMm > 0 ? `&guide_distance_mm=${guideDistanceMm}` : ''}`
                                 }
                                 target="_blank"
                                 rel="noopener noreferrer"

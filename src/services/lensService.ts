@@ -76,21 +76,29 @@ class LensService {
         return res.data;
     }
 
-    getTagUrl(tagId: number, sizeMm: number = 50, dpi: number = 300) {
-        return `${this.baseUrl}/api/apriltag/generate/${tagId}?size_mm=${sizeMm}&dpi=${dpi}`;
+    getTagUrl(tagId: number, sizeMm: number = 50, dpi: number = 300, guideDistanceMm?: number) {
+        let url = `${this.baseUrl}/api/apriltag/generate/${tagId}?size_mm=${sizeMm}&dpi=${dpi}`;
+        if (guideDistanceMm !== undefined && guideDistanceMm > 0) {
+            url += `&guide_distance_mm=${guideDistanceMm}`;
+        }
+        return url;
     }
 
-    async generateTag(tagId: number, sizeMm: number = 50, dpi: number = 300, paperWidthIn: number = 8.5, paperHeightIn: number = 11.0): Promise<Blob> {
+    async generateTag(tagId: number, sizeMm: number = 50, dpi: number = 300, paperWidthIn: number = 8.5, paperHeightIn: number = 11.0, guideDistanceMm?: number): Promise<Blob> {
+        const params: any = { size_mm: sizeMm, dpi, paper_width_in: paperWidthIn, paper_height_in: paperHeightIn };
+        if (guideDistanceMm !== undefined && guideDistanceMm > 0) params.guide_distance_mm = guideDistanceMm;
         const res = await axios.get(`${this.baseUrl}/api/apriltag/generate/${tagId}`, {
-            params: { size_mm: sizeMm, dpi, paper_width_in: paperWidthIn, paper_height_in: paperHeightIn },
+            params,
             responseType: 'blob'
         });
         return res.data;
     }
 
-    async batchGenerateTags(startId: number = 0, count: number = 4, sizeMm: number = 50, dpi: number = 300, paperWidthIn: number = 8.5, paperHeightIn: number = 11.0): Promise<Blob> {
+    async batchGenerateTags(startId: number = 0, count: number = 4, sizeMm: number = 50, dpi: number = 300, paperWidthIn: number = 8.5, paperHeightIn: number = 11.0, guideDistanceMm?: number): Promise<Blob> {
+        const params: any = { start_id: startId, count, size_mm: sizeMm, dpi, paper_width_in: paperWidthIn, paper_height_in: paperHeightIn };
+        if (guideDistanceMm !== undefined && guideDistanceMm > 0) params.guide_distance_mm = guideDistanceMm;
         const res = await axios.get(`${this.baseUrl}/api/apriltag/batch`, {
-            params: { start_id: startId, count, size_mm: sizeMm, dpi, paper_width_in: paperWidthIn, paper_height_in: paperHeightIn },
+            params,
             responseType: 'blob'
         });
         return res.data;
@@ -121,6 +129,11 @@ class LensService {
 
     async lensCalibrationStatus(): Promise<LensSessionStatus> {
         const res = await axios.get(`${this.baseUrl}/api/lens/calibrate-lens/status`);
+        return res.data;
+    }
+
+    async lensCalibrationReset(): Promise<{ status: string; message: string }> {
+        const res = await axios.delete(`${this.baseUrl}/api/lens/calibrate-lens`);
         return res.data;
     }
 
