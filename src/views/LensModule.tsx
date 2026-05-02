@@ -620,6 +620,16 @@ export const LensModule: React.FC = () => {
                                 })}
                             </div>
 
+                            {/* Empty-bed reminder — reference frame is captured automatically */}
+                            <div className="flex items-start gap-2 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3">
+                                <span className="text-amber-400 text-base mt-0.5 shrink-0">⚠️</span>
+                                <p className="text-[11px] text-amber-300 leading-relaxed">
+                                    <span className="font-black">Make sure the bed is empty</span> before submitting.
+                                    Calibration will automatically capture an empty-bed reference photo used for
+                                    background subtraction during workpiece detection.
+                                </p>
+                            </div>
+
                             <button onClick={submitCalibration} disabled={isCalibrating || calibrationPoints.length < 4}
                                 className="w-full py-3 bg-miami-cyan text-black font-black rounded-xl shadow-lg shadow-miami-cyan/20 disabled:opacity-30">
                                 {isCalibrating ? 'SUBMITTING...' : 'UPDATE CALIBRATION'}
