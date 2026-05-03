@@ -108,6 +108,12 @@ export const StudioModule: React.FC = () => {
     const [editingOpId, setEditingOpId] = useState<string | null>(null);
     const [draftOp, setDraftOp] = useState<Partial<JobOperation>>({});
     
+    // ── Design Wizard State ──
+    const [designWizardOpen, setDesignWizardOpen] = useState(false);
+    const [designWizardMode, setDesignWizardMode] = useState<'select' | 'saved' | 'new'>('select');
+    const [savedImages, setSavedImages] = useState<{filename: string, url: string}[]>([]);
+    const [saveToEngraver, setSaveToEngraver] = useState(false);
+
     // Upload state
     const [isUploading, setIsUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
@@ -1090,8 +1096,54 @@ export const StudioModule: React.FC = () => {
     useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
 
     // ── File event handlers ──
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const f = e.target.files?.[0]; if (f) loadFile(f); e.target.value = '';
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const f = e.target.files?.[0]; 
+        if (f) {
+            if (saveToEngraver) {
+                const form = new FormData();
+                form.append('file', f);
+                try {
+                    await axios.post('/api/images/upload', form, {
+                        headers: { 'Content-Type': 'multipart/form-data' }
+                    });
+                } catch (err) {
+                    console.error('Failed to save to engraver', err);
+                }
+            }
+            loadFile(f); 
+            setDesignWizardOpen(false);
+        }
+        e.target.value = '';
+    };
+
+    const openDesignWizard = () => {
+        setDesignWizardMode('select');
+        setDesignWizardOpen(true);
+    };
+
+    const fetchSavedImages = async () => {
+        try {
+            const res = await axios.get('/api/images');
+            setSavedImages(res.data);
+            setDesignWizardMode('saved');
+        } catch (err) {
+            console.error('Failed to fetch saved images', err);
+            alert('Failed to reach the image server.');
+        }
+    };
+
+    const loadSavedImage = async (filename: string, url: string) => {
+        try {
+            const res = await fetch(url);
+            if (!res.ok) throw new Error('Network error');
+            const blob = await res.blob();
+            const file = new File([blob], filename, { type: res.headers.get('content-type') || 'image/png' });
+            loadFile(file);
+            setDesignWizardOpen(false);
+        } catch (err) {
+            console.error('Failed to load image', err);
+            alert('Failed to load the image.');
+        }
     };
     const handleDrop = (e: React.DragEvent) => {
         e.preventDefault(); setIsDragOver(false); const f = e.dataTransfer.files[0]; if (f) loadFile(f);
@@ -1154,6 +1206,123 @@ export const StudioModule: React.FC = () => {
     return (
         <div className="flex flex-col h-full bg-black/10">
             
+            {/* ── DESIGN WIZARD MODAL ── */}
+            {designWizardOpen && (
+                <div className="fixed inset-0 z-[300] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+                    <div className="w-full max-w-lg bg-[#0c0c14] border-t sm:border border-gray-800 rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in slide-in-from-bottom duration-300">
+                        {/* Header */}
+                        <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between bg-black/40">
+                            <h3 className="text-miami-pink font-black text-sm uppercase tracking-widest">
+                                Load Design
+                            </h3>
+                            <button onClick={() => setDesignWizardOpen(false)} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-900 text-gray-500 hover:text-white transition-colors">✕</button>
+                        </div>
+
+                        {/* Step Content */}
+                        <div className="flex-1 overflow-y-auto p-6 min-h-[40vh]">
+                            {designWizardMode === 'select' && (
+                                <div className="space-y-4">
+                                    <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest mb-4">Select Source</p>
+                                    <div className="grid grid-cols-1 gap-3">
+                                        <button 
+                                            onClick={fetchSavedImages}
+                                            className="p-4 rounded-2xl border-2 text-left transition-all flex items-center gap-4 bg-black/40 border-gray-800 hover:border-miami-cyan"
+                                        >
+                                            <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl bg-miami-cyan/20 text-miami-cyan">
+                                                📂
+                                            </div>
+                                            <div>
+                                                <span className="block font-black text-white capitalize">Start with an existing design</span>
+                                                <span className="block text-[10px] text-gray-500 mt-0.5">
+                                                    Load an image previously saved to the engraver
+                                                </span>
+                                            </div>
+                                        </button>
+
+                                        <button 
+                                            onClick={() => setDesignWizardMode('new')}
+                                            className="p-4 rounded-2xl border-2 text-left transition-all flex items-center gap-4 bg-black/40 border-gray-800 hover:border-miami-pink"
+                                        >
+                                            <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl bg-miami-pink/20 text-miami-pink">
+                                                ✨
+                                            </div>
+                                            <div>
+                                                <span className="block font-black text-white capitalize">Start with a new design</span>
+                                                <span className="block text-[10px] text-gray-500 mt-0.5">
+                                                    Select an image from your device
+                                                </span>
+                                            </div>
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {designWizardMode === 'saved' && (
+                                <div className="space-y-4">
+                                    <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest mb-4">Saved Images ({savedImages.length})</p>
+                                    {savedImages.length === 0 ? (
+                                        <div className="text-center py-8">
+                                            <p className="text-xs text-gray-500">No images saved to the engraver.</p>
+                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-1 gap-2 max-h-[40vh] overflow-y-auto pr-2">
+                                            {savedImages.map(img => (
+                                                <button key={img.filename} 
+                                                    onClick={() => loadSavedImage(img.filename, img.url)}
+                                                    className="w-full flex items-center gap-3 p-3 rounded-xl border transition-all bg-black/20 border-gray-800 hover:border-miami-cyan"
+                                                >
+                                                    <div className="w-10 h-10 rounded-lg bg-gray-900 flex items-center justify-center overflow-hidden">
+                                                        <img src={img.url} alt={img.filename} className="w-full h-full object-cover opacity-80" />
+                                                    </div>
+                                                    <div className="flex flex-col min-w-0 flex-1 text-left">
+                                                        <span className="text-xs text-white font-bold truncate">{img.filename}</span>
+                                                    </div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {designWizardMode === 'new' && (
+                                <div className="space-y-6">
+                                    <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest mb-4">Upload Design</p>
+                                    
+                                    <div className="bg-black/40 border border-gray-800 rounded-2xl p-6 text-center">
+                                        <div className="text-4xl mb-4">📁</div>
+                                        <p className="text-sm text-gray-400 mb-6">Select an SVG, PNG, JPG, BMP, or WebP</p>
+                                        
+                                        <div 
+                                            className="flex items-center justify-center gap-3 mb-6 cursor-pointer"
+                                            onClick={() => setSaveToEngraver(!saveToEngraver)}
+                                        >
+                                            <div className={`w-10 h-5 flex items-center rounded-full p-1 transition-colors ${saveToEngraver ? 'bg-miami-pink' : 'bg-gray-800'}`}>
+                                                <div className={`w-3.5 h-3.5 bg-white rounded-full shadow-sm transition-transform duration-200 ${saveToEngraver ? 'translate-x-4' : 'translate-x-0'}`} />
+                                            </div>
+                                            <span className="text-xs text-gray-300 font-bold select-none">💾 Save copy to engraver</span>
+                                        </div>
+
+                                        <button 
+                                            onClick={() => fileInputRef.current?.click()}
+                                            className="px-6 py-3 bg-miami-pink text-black font-black rounded-xl shadow-[0_0_15px_rgba(255,0,127,0.3)] hover:scale-105 active:scale-95 transition-all w-full"
+                                        >
+                                            Choose File
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Footer */}
+                        {designWizardMode !== 'select' && (
+                            <div className="p-6 border-t border-gray-800 bg-black/40 flex gap-3">
+                                <button onClick={() => setDesignWizardMode('select')} className="px-6 py-4 bg-gray-900 text-white font-black rounded-2xl border border-gray-700 active:scale-95 transition-all">Back</button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
             {/* ── OPERATION WIZARD MODAL ── */}
             {wizardOpen && (
                 <div className="fixed inset-0 z-[300] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
@@ -1456,9 +1625,9 @@ export const StudioModule: React.FC = () => {
 
                     {/* Import / file badge */}
                     {!fileKind ? (
-                        <button onClick={() => fileInputRef.current?.click()}
-                            className="w-full py-4 bg-black/50 border-2 border-dashed border-miami-pink/40 text-miami-pink/80 hover:border-miami-pink hover:text-miami-pink hover:bg-miami-pink/5 font-bold rounded-xl transition-all text-sm select-none">
-                            📁 Import SVG or Bitmap — or Drag &amp; Drop
+                        <button onClick={openDesignWizard}
+                            className="w-full py-4 bg-miami-pink/10 border border-miami-pink/30 text-miami-pink font-black rounded-xl hover:border-miami-pink hover:bg-miami-pink/20 hover:shadow-[0_0_15px_rgba(255,0,127,0.15)] transition-all text-sm select-none active:scale-[0.98]">
+                            🎨 Load Design
                         </button>
                     ) : (
                         <div className="flex gap-2 items-center">
