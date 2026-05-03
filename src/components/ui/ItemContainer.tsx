@@ -14,10 +14,10 @@ export const ItemContainer: React.FC<ItemContainerProps> = ({
     className = '' 
 }) => {
     return (
-        <div className={`bg-black/40 border border-gray-800 rounded-xl p-4 flex flex-col ${className}`}>
+        <div className={`bg-miami-cyan/5 border border-miami-cyan/30 rounded-xl p-4 flex flex-col ${className}`}>
             {title && (
                 <div className="flex items-center justify-between mb-3 flex-shrink-0">
-                    <h3 className="text-[10px] uppercase text-white font-bold tracking-widest text-left">
+                    <h3 className="text-[10px] uppercase text-miami-cyan font-bold tracking-widest text-left">
                         {title}
                     </h3>
                 </div>

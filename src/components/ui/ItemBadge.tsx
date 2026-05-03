@@ -2,8 +2,8 @@ import React, { ReactNode } from 'react';
 import { ActionButton } from './ActionButton';
 
 export interface ItemBadgeProps {
-    title: ReactNode;
-    subtitle?: ReactNode;
+    title: string;
+    subtitle?: string;
     icon?: ReactNode;
     onEdit?: () => void;
     onDelete?: () => void;
