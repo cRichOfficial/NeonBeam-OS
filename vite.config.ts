@@ -17,6 +17,7 @@ import tailwindcss from '@tailwindcss/vite'
 // DISCOVERY_SIDECAR_URL is set in docker-compose.yml for Docker environments.
 // For native dev it defaults to http://127.0.0.1:3001.
 const sidecarUrl = process.env.DISCOVERY_SIDECAR_URL ?? 'http://127.0.0.1:3001';
+const fileServerUrl = process.env.FILE_SERVER_URL ?? 'http://127.0.0.1:8002';
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -29,6 +30,10 @@ export default defineConfig({
     proxy: {
       '/api/discovery': {
         target: sidecarUrl,
+        changeOrigin: true,
+      },
+      '/api/images': {
+        target: fileServerUrl,
         changeOrigin: true,
       },
     },
