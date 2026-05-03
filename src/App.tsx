@@ -11,6 +11,8 @@ import { MaterialPresetsModule } from './views/MaterialPresetsModule';
 import { GCodeStudioModule } from './views/GCodeStudioModule';
 import { LensModule } from './views/LensModule';
 import { DemoModule } from './views/DemoModule';
+import { View } from './components/layout/View';
+import { ModuleIcon } from './components/ui/ModuleIcon';
 
 // ── Core Module Registration ──────────────────────────────────────────────────
 ModuleRegistry.register({
@@ -115,38 +117,20 @@ function App() {
                     Using visibility + pointer-events rather than `display:none`
                     so the home grid stays in the DOM and snaps back instantly. */}
                 <div className={`absolute inset-0 transition-opacity duration-150 ${
-                    activeModuleId ? 'opacity-0 pointer-events-none' : 'opacity-100 overflow-y-auto'
+                    activeModuleId ? 'opacity-0 pointer-events-none' : 'opacity-100'
                 }`}>
-                    <div className="p-6 min-h-full flex flex-col">
-                        <div className="mb-10 pt-8 text-center flex-shrink-0">
-                            <h1 className="text-4xl font-black tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-miami-cyan to-miami-pink mb-2">
-                                NEONBEAM OS
-                            </h1>
-                            <p className="text-gray-400 font-medium">Select a module to begin</p>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
+                    <View title="NEONBEAM OS" subtitle="Select a module to begin">
+                        <div className="p-4 grid grid-cols-2 gap-4">
                             {modules.map(mod => (
-                                <button
+                                <ModuleIcon
                                     key={mod.id}
+                                    label={mod.title}
+                                    icon={mod.icon}
                                     onClick={() => navigateTo(mod.id)}
-                                    className="bg-black/40 border border-gray-800 hover:border-miami-cyan/50 hover:bg-black/60 transition-all rounded-3xl p-8 flex flex-col items-center justify-center gap-4 group shadow-xl relative overflow-hidden"
-                                >
-                                    <div className="absolute inset-0 bg-gradient-to-br from-miami-cyan/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                                    <div className="text-5xl group-hover:scale-110 group-hover:-translate-y-1 transition-all z-10 drop-shadow-md">
-                                        {mod.icon}
-                                    </div>
-                                    <span className="text-gray-200 font-bold tracking-wide group-hover:text-miami-cyan transition-colors z-10">
-                                        {mod.title}
-                                    </span>
-                                </button>
+                                />
                             ))}
                         </div>
-
-                        <div className="mt-auto text-center pb-4 opacity-50">
-                            <p className="text-xs">Modular System Environment Ready</p>
-                        </div>
-                    </div>
+                    </View>
                 </div>
 
                 {/* ── Module Views ─────────────────────────────────────────────
