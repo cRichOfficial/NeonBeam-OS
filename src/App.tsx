@@ -10,6 +10,7 @@ import { AppSettingsModule } from './views/AppSettingsModule';
 import { MaterialPresetsModule } from './views/MaterialPresetsModule';
 import { GCodeStudioModule } from './views/GCodeStudioModule';
 import { LensModule } from './views/LensModule';
+import { DemoModule } from './views/DemoModule';
 
 // ── Core Module Registration ──────────────────────────────────────────────────
 ModuleRegistry.register({
@@ -51,6 +52,7 @@ ModuleRegistry.register({
 
 ModuleRegistry.register({ id: 'machine_settings',  title: 'Machine Config',    icon: '⚙️', component: MachineSettingsModule,  isCore: true });
 ModuleRegistry.register({ id: 'app_settings',      title: 'App Settings',      icon: '🎛️', component: AppSettingsModule,      isCore: true });
+ModuleRegistry.register({ id: 'ui_demo',           title: 'UI Demo',           icon: '🎨', component: DemoModule,             isCore: true });
 
 // ── App ───────────────────────────────────────────────────────────────────────
 
