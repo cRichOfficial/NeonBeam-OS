@@ -10,7 +10,7 @@ interface TelemetryState {
 }
 
 const defaultTelemetry: MachineTelemetry = {
-    state: 'Offline',
+    state: 'Connecting',
     mpos: { x: 0, y: 0, z: 0 },
     wpos: { x: 0, y: 0, z: 0 },
     feedRate: 0,

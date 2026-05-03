@@ -31,7 +31,7 @@ export const useTelemetry = (wsUrl: string) => {
         let dead = false;
 
         const connect = () => {
-            if (dead || (wsRef.current && wsRef.current.readyState === WebSocket.OPEN)) return;
+            if (dead || (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING))) return;
             
             // Close existing if any (cleanup)
             if (wsRef.current) {
@@ -43,13 +43,16 @@ export const useTelemetry = (wsUrl: string) => {
             wsRef.current = ws;
 
             ws.onopen = () => {
+                if (wsRef.current !== ws) return;
                 setConnected(true);
                 console.log('[NeonBeam] Telemetry WS connected');
             };
 
             ws.onmessage = (event) => {
+                if (wsRef.current !== ws) return;
                 try {
                     const data = JSON.parse(event.data);
+                    console.log('[NeonBeam] Telemetry data received:', data.state);
                     updateStatusRaw(data);
                 } catch {}
             };
@@ -57,8 +60,12 @@ export const useTelemetry = (wsUrl: string) => {
             ws.onerror = () => {};
 
             ws.onclose = () => {
-                setConnected(false);
-                updateTelemetry({ state: 'Connecting' });
+                if (wsRef.current === ws) {
+                    wsRef.current = null;
+                    setConnected(false);
+                    updateTelemetry({ state: 'Connecting' });
+                }
+                
                 if (!dead) {
                     clearTimeout(reconnectTimeout);
                     reconnectTimeout = setTimeout(connect, 4000);
@@ -90,7 +97,7 @@ export const useTelemetry = (wsUrl: string) => {
         //    If HTTP works but WS is down, the WS constructor might be blocked or 
         //    failing silently; we force a retry.
         healthInterval = setInterval(async () => {
-            if (dead || (wsRef.current && wsRef.current.readyState === WebSocket.OPEN)) return;
+            if (dead || (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING))) return;
             
             try {
                 const httpUrl = wsUrl.replace(/^ws/, 'http').replace(/\/ws\/telemetry$/, '/api/health');
