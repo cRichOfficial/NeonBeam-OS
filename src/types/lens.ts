@@ -3,6 +3,7 @@ export interface CalibrationPoint {
     physical_x: number;
     physical_y: number;
     size_mm?: number;
+    guide_mm?: number;
     anchor?: string;
 }
 
