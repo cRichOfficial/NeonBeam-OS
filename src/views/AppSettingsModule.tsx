@@ -1,6 +1,11 @@
 import React, { useState, useCallback } from 'react';
 import { useAppSettingsStore } from '../store/appSettingsStore';
 import { NumericInput } from '../components/NumericInput';
+import { View } from '../components/layout/View';
+import { SectionCard } from '../components/layout/SectionCard';
+import { ActionButton } from '../components/ui/ActionButton';
+import { RadioGroup } from '../components/ui/RadioGroup';
+import { SegmentedControl } from '../components/ui/SegmentedControl';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface DiscoveredService {
@@ -119,6 +124,15 @@ export const AppSettingsModule: React.FC = () => {
     const [scanResults, setScanResults] = useState<DiscoveredService[] | null>(null);
     const [sidecarNote, setSidecarNote] = useState<string | null>(null);
 
+    const [forceCustomSvg, setForceCustomSvg] = useState(false);
+    const [forceCustomBitmap, setForceCustomBitmap] = useState(false);
+
+    const isSvgCustom = forceCustomSvg || ![72, 96, 150, 300].includes(settings.svgDpi);
+    const activeSvgRadio = isSvgCustom ? 'custom' : settings.svgDpi;
+
+    const isBitmapCustom = forceCustomBitmap || ![72, 96, 150, 300, 600].includes(settings.bitmapDpi);
+    const activeBitmapRadio = isBitmapCustom ? 'custom' : settings.bitmapDpi;
+
     const scanNetwork = useCallback(async () => {
         setScanning(true);
         setScanResults(null);
@@ -152,59 +166,71 @@ export const AppSettingsModule: React.FC = () => {
     }, [updateSettings]);
 
     return (
-        <div className="p-4 animate-in fade-in zoom-in duration-300 pb-12">
-            <h2 className="text-2xl font-bold text-miami-purple mb-6 tracking-tight">App Settings</h2>
+        <View title="App Settings" subtitle="Configure system parameters" showHomeButton>
+            <div className="p-4 space-y-4 pb-12">
 
-            <div className="space-y-4">
-
-                {/* ── Studio Grid Display ──────────────────────────────────── */}
-                <div className="bg-black/40 border border-gray-800 rounded-xl p-5 shadow-lg">
-                    <h3 className="text-gray-300 text-xs uppercase font-bold tracking-widest mb-4">Studio Grid Display</h3>
-
+                {/* ── Canvas Settings ──────────────────────────────────── */}
+                <SectionCard title="Canvas Settings">
                     <div className="grid grid-cols-2 gap-4 mb-4">
                         <div>
-                            <label className="block text-[10px] uppercase text-gray-300 mb-1">Canvas Width</label>
-                            <NumericInput value={settings.gridWidth}   onChange={val => updateSettings({ gridWidth:   val })} min={1} className="w-full bg-black/60 border border-gray-700 rounded-lg p-2 text-white font-mono outline-none" />
+                            <label className="block text-[10px] text-gray-400 mb-2 uppercase font-bold text-left">Canvas Width</label>
+                            <NumericInput value={settings.gridWidth}   onChange={val => updateSettings({ gridWidth:   val })} min={1} className="w-full bg-miami-cyan/10 border border-miami-cyan/50 focus:border-miami-cyan rounded-lg p-3 text-white text-sm font-mono outline-none transition-colors" />
                         </div>
                         <div>
-                            <label className="block text-[10px] uppercase text-gray-300 mb-1">Canvas Height</label>
-                            <NumericInput value={settings.gridHeight}  onChange={val => updateSettings({ gridHeight:  val })} min={1} className="w-full bg-black/60 border border-gray-700 rounded-lg p-2 text-white font-mono outline-none" />
+                            <label className="block text-[10px] text-gray-400 mb-2 uppercase font-bold text-left">Canvas Height</label>
+                            <NumericInput value={settings.gridHeight}  onChange={val => updateSettings({ gridHeight:  val })} min={1} className="w-full bg-miami-cyan/10 border border-miami-cyan/50 focus:border-miami-cyan rounded-lg p-3 text-white text-sm font-mono outline-none transition-colors" />
                         </div>
                         <div>
-                            <label className="block text-[10px] uppercase text-gray-300 mb-1">Major Rules (Spacing)</label>
-                            <NumericInput value={settings.majorSpacing} onChange={val => updateSettings({ majorSpacing: val })} min={1} className="w-full bg-black/60 border border-gray-700 rounded-lg p-2 text-white font-mono outline-none" />
+                            <label className="block text-[10px] text-gray-400 mb-2 uppercase font-bold text-left">Major Rules (Spacing)</label>
+                            <NumericInput value={settings.majorSpacing} onChange={val => updateSettings({ majorSpacing: val })} min={1} className="w-full bg-miami-cyan/10 border border-miami-cyan/50 focus:border-miami-cyan rounded-lg p-3 text-white text-sm font-mono outline-none transition-colors" />
                         </div>
                         <div>
-                            <label className="block text-[10px] uppercase text-gray-300 mb-1">Minor Rules Grid</label>
-                            <NumericInput value={settings.minorSpacing} onChange={val => updateSettings({ minorSpacing: val })} min={1} className="w-full bg-black/60 border border-gray-700 rounded-lg p-2 text-white font-mono outline-none" />
+                            <label className="block text-[10px] text-gray-400 mb-2 uppercase font-bold text-left">Minor Rules Grid</label>
+                            <NumericInput value={settings.minorSpacing} onChange={val => updateSettings({ minorSpacing: val })} min={1} className="w-full bg-miami-cyan/10 border border-miami-cyan/50 focus:border-miami-cyan rounded-lg p-3 text-white text-sm font-mono outline-none transition-colors" />
                         </div>
                     </div>
 
+                    <ActionButton variant="normal" className="w-full py-3">
+                        Snap to Machine Dimensions
+                    </ActionButton>
+                </SectionCard>
+
+                {/* ── Image Import Settings ──────────────────────────────────── */}
+                <SectionCard title="Image Import Settings">
                     {/* SVG DPI */}
-                    <div className="border-t border-gray-800/60 pt-4 space-y-2">
+                    <div className="space-y-2">
                         <div className="flex items-center justify-between">
                             <div>
                                 <span className="block text-xs font-bold text-gray-200">SVG Import DPI</span>
                                 <span className="block text-[10px] text-gray-500 mt-0.5">px → mm for vector files · CSS standard is 96</span>
                             </div>
-                            <NumericInput
-                                min={1} max={2400}
-                                value={settings.svgDpi}
-                                onChange={val => updateSettings({ svgDpi: val })}
-                                className="w-20 bg-black/60 border border-gray-700 focus:border-miami-cyan rounded-lg p-2 text-white font-mono text-sm outline-none transition-colors text-center"
-                            />
+                            {isSvgCustom && (
+                                <NumericInput
+                                    min={1} max={2400}
+                                    value={settings.svgDpi}
+                                    onChange={val => updateSettings({ svgDpi: val })}
+                                    className="w-20 bg-miami-cyan/10 border border-miami-cyan/50 focus:border-miami-cyan rounded-lg p-2 text-white font-mono text-sm outline-none transition-colors text-center"
+                                />
+                            )}
                         </div>
-                        <div className="flex gap-1.5">
-                            {[72, 96, 150, 300].map(dpi => (
-                                <button key={dpi} onClick={() => updateSettings({ svgDpi: dpi })}
-                                    className={`flex-1 py-1.5 rounded-lg text-[10px] font-black border transition-all ${
-                                        settings.svgDpi === dpi
-                                            ? 'bg-miami-cyan text-black border-miami-cyan'
-                                            : 'bg-black/60 text-gray-500 border-gray-700 hover:border-gray-400 hover:text-gray-300'
-                                    }`}
-                                >{dpi}</button>
-                            ))}
-                        </div>
+                        <RadioGroup
+                            options={[
+                                { value: 72, label: 72 },
+                                { value: 96, label: 96 },
+                                { value: 150, label: 150 },
+                                { value: 300, label: 300 },
+                                { value: 'custom', label: 'Custom' },
+                            ]}
+                            value={activeSvgRadio}
+                            onChange={(val) => {
+                                if (val === 'custom') setForceCustomSvg(true);
+                                else {
+                                    setForceCustomSvg(false);
+                                    updateSettings({ svgDpi: val as number });
+                                }
+                            }}
+                            accentColor="cyan"
+                        />
                         <p className="text-[9px] text-gray-700 font-mono">
                             1 px = {(25.4 / settings.svgDpi).toFixed(4)} mm at {settings.svgDpi} DPI
                         </p>
@@ -217,95 +243,96 @@ export const AppSettingsModule: React.FC = () => {
                                 <span className="block text-xs font-bold text-gray-200">Bitmap Import DPI</span>
                                 <span className="block text-[10px] text-gray-500 mt-0.5">px → mm for raster images · print scans often 300+</span>
                             </div>
-                            <NumericInput
-                                min={1} max={2400}
-                                value={settings.bitmapDpi}
-                                onChange={val => updateSettings({ bitmapDpi: val })}
-                                className="w-20 bg-black/60 border border-miami-pink/30 focus:border-miami-pink rounded-lg p-2 text-white font-mono text-sm outline-none transition-colors text-center"
-                            />
+                            {isBitmapCustom && (
+                                <NumericInput
+                                    min={1} max={2400}
+                                    value={settings.bitmapDpi}
+                                    onChange={val => updateSettings({ bitmapDpi: val })}
+                                    className="w-20 bg-miami-cyan/10 border border-miami-cyan/50 focus:border-miami-cyan rounded-lg p-2 text-white font-mono text-sm outline-none transition-colors text-center"
+                                />
+                            )}
                         </div>
-                        <div className="flex gap-1.5">
-                            {[72, 96, 150, 300, 600].map(dpi => (
-                                <button key={dpi} onClick={() => updateSettings({ bitmapDpi: dpi })}
-                                    className={`flex-1 py-1.5 rounded-lg text-[10px] font-black border transition-all ${
-                                        settings.bitmapDpi === dpi
-                                            ? 'bg-miami-pink text-black border-miami-pink'
-                                            : 'bg-black/60 text-gray-500 border-gray-700 hover:border-gray-400 hover:text-gray-300'
-                                    }`}
-                                >{dpi}</button>
-                            ))}
-                        </div>
+                        <RadioGroup
+                            options={[
+                                { value: 72, label: 72 },
+                                { value: 96, label: 96 },
+                                { value: 150, label: 150 },
+                                { value: 300, label: 300 },
+                                { value: 600, label: 600 },
+                                { value: 'custom', label: 'Custom' },
+                            ]}
+                            value={activeBitmapRadio}
+                            onChange={(val) => {
+                                if (val === 'custom') setForceCustomBitmap(true);
+                                else {
+                                    setForceCustomBitmap(false);
+                                    updateSettings({ bitmapDpi: val as number });
+                                }
+                            }}
+                            accentColor="cyan"
+                        />
                         <p className="text-[9px] text-gray-700 font-mono">
                             1 px = {(25.4 / settings.bitmapDpi).toFixed(4)} mm at {settings.bitmapDpi} DPI
                         </p>
                     </div>
 
-                    <button className="w-full mt-4 py-2 bg-gray-800 text-xs font-bold text-gray-300 rounded hover:bg-gray-700 transition">
-                        Snap to Machine Dimensions
-                    </button>
-                </div>
+                </SectionCard>
 
                 {/* ── Display Preferences ──────────────────────────────────── */}
-                <div className="bg-black/40 border border-gray-800 rounded-xl p-5 shadow-lg">
-                    <h3 className="text-gray-300 text-xs uppercase font-bold tracking-widest mb-4">Display Preferences</h3>
-
+                <SectionCard title="Display Preferences">
                     <div className="flex items-center justify-between py-3 border-b border-gray-800/50">
                         <span className="text-sm font-medium text-gray-200">System Speed Units</span>
-                        <div className="flex bg-black rounded-lg border border-gray-700 overflow-hidden">
-                            <button onClick={() => updateSettings({ feedUnits: 'mm/min' })}
-                                className={`px-3 py-1.5 text-xs font-bold ${settings.feedUnits === 'mm/min' ? 'bg-miami-cyan text-black' : 'text-gray-500 hover:text-white'}`}
-                            >mm/min</button>
-                            <button onClick={() => updateSettings({ feedUnits: 'mm/s' })}
-                                className={`px-3 py-1.5 text-xs font-bold ${settings.feedUnits === 'mm/s' ? 'bg-miami-cyan text-black' : 'text-gray-500 hover:text-white'}`}
-                            >mm/sec</button>
-                        </div>
+                        <SegmentedControl
+                            options={[
+                                { value: 'mm/min', label: 'mm/min' },
+                                { value: 'mm/s', label: 'mm/sec' }
+                            ]}
+                            value={settings.feedUnits}
+                            onChange={(val) => updateSettings({ feedUnits: val as 'mm/min' | 'mm/s' })}
+                        />
                     </div>
 
                     <div className="flex items-center justify-between pt-4 pb-2">
                         <span className="text-sm font-medium text-gray-200">System Theme</span>
                         <span className="text-sm font-bold bg-gradient-to-r from-miami-pink to-miami-purple bg-clip-text text-transparent tracking-wide">Miami Neon</span>
                     </div>
-                </div>
+                </SectionCard>
 
                 {/* ── Laser Configuration ──────────────────────────────────── */}
-                <div className="bg-black/40 border border-gray-800 rounded-xl p-5 shadow-lg">
-                    <h3 className="text-gray-300 text-xs uppercase font-bold tracking-widest mb-4">Laser Configuration</h3>
-
+                <SectionCard title="Laser Configuration">
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-[10px] uppercase text-gray-300 mb-1">Test Power (%)</label>
-                            <NumericInput value={settings.laserTestPower} onChange={val => updateSettings({ laserTestPower: val })} min={1} max={100} className="w-full bg-black/60 border border-gray-700 focus:border-miami-cyan rounded-lg p-2 text-white font-mono outline-none" />
+                            <label className="block text-[10px] text-gray-400 mb-2 uppercase font-bold text-left">Test Power (%)</label>
+                            <NumericInput value={settings.laserTestPower} onChange={val => updateSettings({ laserTestPower: val })} min={1} max={100} className="w-full bg-miami-cyan/10 border border-miami-cyan/50 focus:border-miami-cyan rounded-lg p-3 text-white text-sm font-mono outline-none transition-colors" />
                         </div>
                         <div>
-                            <label className="block text-[10px] uppercase text-gray-300 mb-1">Test Duration (ms)</label>
-                            <NumericInput value={settings.laserTestDuration} onChange={val => updateSettings({ laserTestDuration: val })} min={1} className="w-full bg-black/60 border border-gray-700 focus:border-miami-cyan rounded-lg p-2 text-white font-mono outline-none" />
+                            <label className="block text-[10px] text-gray-400 mb-2 uppercase font-bold text-left">Test Duration (ms)</label>
+                            <NumericInput value={settings.laserTestDuration} onChange={val => updateSettings({ laserTestDuration: val })} min={1} className="w-full bg-miami-cyan/10 border border-miami-cyan/50 focus:border-miami-cyan rounded-lg p-3 text-white text-sm font-mono outline-none transition-colors" />
                         </div>
                     </div>
-                </div>
+                </SectionCard>
 
                 {/* ── Network Bridge ───────────────────────────────────────── */}
-                <div className="bg-black/40 border border-gray-800 rounded-xl p-5 shadow-lg">
-                    <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-gray-300 text-xs uppercase font-bold tracking-widest">Network Bridge</h3>
-                        <button
+                <SectionCard 
+                    title="Network Bridge"
+                    action={
+                        <ActionButton
                             id="scan-network-btn"
                             onClick={scanNetwork}
                             disabled={scanning}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-black transition-all ${
-                                scanning
-                                    ? 'bg-miami-cyan/10 border-miami-cyan/30 text-miami-cyan/60 cursor-wait'
-                                    : 'bg-miami-cyan/10 border-miami-cyan/40 text-miami-cyan hover:bg-miami-cyan/20 hover:border-miami-cyan'
-                            }`}
+                            variant="normal"
+                            className="py-1.5 px-3"
                         >
                             {scanning ? (
-                                <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none">
+                                <svg className="w-3 h-3 animate-spin inline-block mr-1.5" viewBox="0 0 24 24" fill="none">
                                     <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25"/>
                                     <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
                                 </svg>
-                            ) : '🔍'}
+                            ) : <span className="mr-1.5">🔍</span>}
                             {scanning ? 'Scanning…' : 'Scan Network'}
-                        </button>
-                    </div>
+                        </ActionButton>
+                    }
+                >
 
                     <div className="space-y-4">
                         {/* Core Backend */}
@@ -320,16 +347,17 @@ export const AppSettingsModule: React.FC = () => {
                                     type="text"
                                     value={settings.coreApiUrl}
                                     onChange={e => updateSettings({ coreApiUrl: e.target.value })}
-                                    className="flex-1 bg-black/60 border border-gray-700 focus:border-miami-cyan rounded-lg p-2 text-white font-mono text-xs outline-none transition-colors"
+                                    className="flex-1 bg-miami-cyan/10 border border-miami-cyan/50 focus:border-miami-cyan rounded-lg p-3 text-white font-mono text-sm outline-none transition-colors"
                                     placeholder={import.meta.env.VITE_COMM_API_URL || "http://neonbeam-core.local:8000"}
                                 />
-                                <button
+                                <ActionButton
                                     id="test-core-btn"
                                     onClick={() => coreTest.test(settings.coreApiUrl)}
                                     disabled={coreTest.status === 'testing'}
+                                    variant="normal"
+                                    className="px-3"
                                     title="Test connection"
-                                    className="px-3 py-2 bg-black/60 border border-gray-700 hover:border-miami-cyan text-miami-cyan text-xs font-black rounded-lg transition-colors disabled:opacity-50"
-                                >🔌</button>
+                                >Test</ActionButton>
                             </div>
                         </div>
 
@@ -345,28 +373,25 @@ export const AppSettingsModule: React.FC = () => {
                                     type="text"
                                     value={settings.lensApiUrl}
                                     onChange={e => updateSettings({ lensApiUrl: e.target.value })}
-                                    className="flex-1 bg-black/60 border border-gray-700 focus:border-miami-purple rounded-lg p-2 text-white font-mono text-xs outline-none transition-colors"
+                                    className="flex-1 bg-miami-cyan/10 border border-miami-cyan/50 focus:border-miami-cyan rounded-lg p-3 text-white font-mono text-sm outline-none transition-colors"
                                     placeholder={import.meta.env.VITE_VISION_API_URL || "http://neonbeam-lens.local:8001"}
                                 />
-                                <button
+                                <ActionButton
                                     id="test-lens-btn"
                                     onClick={() => lensTest.test(settings.lensApiUrl)}
                                     disabled={lensTest.status === 'testing'}
+                                    variant="normal"
+                                    className="px-3"
                                     title="Test connection"
-                                    className="px-3 py-2 bg-black/60 border border-gray-700 hover:border-miami-purple text-miami-purple text-xs font-black rounded-lg transition-colors disabled:opacity-50"
-                                >🔌</button>
+                                >Test</ActionButton>
                             </div>
                         </div>
                     </div>
 
-                    <p className="text-[9px] text-gray-700 font-mono mt-3">
+                    <p className="text-[9px] text-gray-500 font-mono mt-4 text-center">
                         URLs are saved locally. Changes take effect immediately — no restart needed.
                     </p>
-                </div>
-            </div>
-
-            <div className="mt-8 text-center opacity-50">
-                <p className="text-[10px] font-bold text-gray-500 tracking-widest uppercase">NeonBeam OS v1.0.0</p>
+                </SectionCard>
             </div>
 
             {/* ── Discovery result sheet (bottom drawer) ───────────────── */}
@@ -378,6 +403,6 @@ export const AppSettingsModule: React.FC = () => {
                     sidecarNote={sidecarNote}
                 />
             )}
-        </div>
+        </View>
     );
 };

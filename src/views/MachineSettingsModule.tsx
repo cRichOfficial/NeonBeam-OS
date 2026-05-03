@@ -7,6 +7,7 @@ import { SectionCard } from '../components/layout/SectionCard';
 import { TabPage } from '../components/layout/TabPage';
 import { TabControl } from '../components/ui/TabControl';
 import { ActionButton } from '../components/ui/ActionButton';
+import { ToggleSwitch } from '../components/ui/ToggleSwitch';
 
 // ── Tab types ─────────────────────────────────────────────────────────────────
 type Tab = 'workspace' | 'firmware';
@@ -134,16 +135,12 @@ export const MachineSettingsModule: React.FC = () => {
 
                         {/* Z Axis Enable */}
                         <div className="col-span-2">
-                            <label className="flex items-center justify-between cursor-pointer group bg-black/30 px-3 py-3 rounded-lg border border-gray-800 hover:border-miami-cyan/50 transition-colors">
-                                <div className="text-left">
-                                    <span className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Z Axis Control</span>
-                                    <span className="block text-xs text-white mt-1">Enable Z jog buttons on Machine Control</span>
-                                </div>
-                                <div className="relative flex items-center ml-4 flex-shrink-0" onClick={() => updateSettings({ zAxisEnabled: !settings.zAxisEnabled })}>
-                                    <div className={`w-11 h-6 rounded-full transition-colors ${settings.zAxisEnabled ? 'bg-miami-cyan' : 'bg-gray-700'}`} />
-                                    <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full shadow transition-transform ${settings.zAxisEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
-                                </div>
-                            </label>
+                            <ToggleSwitch
+                                checked={settings.zAxisEnabled}
+                                onChange={(checked) => updateSettings({ zAxisEnabled: checked })}
+                                label="Z Axis Control"
+                                description="Enable Z jog buttons on Machine Control"
+                            />
                         </div>
 
                         <div className={settings.zAxisEnabled ? '' : 'opacity-40 pointer-events-none'}>
