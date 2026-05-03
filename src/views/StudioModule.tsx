@@ -110,9 +110,10 @@ export const StudioModule: React.FC = () => {
     
     // ── Design Wizard State ──
     const [designWizardOpen, setDesignWizardOpen] = useState(false);
-    const [designWizardMode, setDesignWizardMode] = useState<'select' | 'saved' | 'new'>('select');
+    const [designWizardMode, setDesignWizardMode] = useState<'select' | 'saved' | 'new' | 'manage' | 'placement'>('select');
     const [savedImages, setSavedImages] = useState<{filename: string, url: string}[]>([]);
     const [saveToEngraver, setSaveToEngraver] = useState(false);
+    const [showCustomDpi, setShowCustomDpi] = useState(false);
 
     // Upload state
     const [isUploading, setIsUploading] = useState(false);
@@ -908,6 +909,7 @@ export const StudioModule: React.FC = () => {
         setGcodeText(''); setGCodeMoves([]);
         designImgRef.current = null; srcCanvasRef.current = null; ditheredRef.current = null; svgTextRef.current = '';
         setDpi(isSvg ? svgDpi : bitmapDpi);
+        setShowCustomDpi(false);
 
         const reader = new FileReader();
         if (isSvg) {
@@ -1111,13 +1113,13 @@ export const StudioModule: React.FC = () => {
                 }
             }
             loadFile(f); 
-            setDesignWizardOpen(false);
+            setDesignWizardMode('placement');
         }
         e.target.value = '';
     };
 
     const openDesignWizard = () => {
-        setDesignWizardMode('select');
+        setDesignWizardMode(fileKind ? 'manage' : 'select');
         setDesignWizardOpen(true);
     };
 
@@ -1139,7 +1141,7 @@ export const StudioModule: React.FC = () => {
             const blob = await res.blob();
             const file = new File([blob], filename, { type: res.headers.get('content-type') || 'image/png' });
             loadFile(file);
-            setDesignWizardOpen(false);
+            setDesignWizardMode('placement');
         } catch (err) {
             console.error('Failed to load image', err);
             alert('Failed to load the image.');
@@ -1213,13 +1215,15 @@ export const StudioModule: React.FC = () => {
                         {/* Header */}
                         <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between bg-black/40">
                             <h3 className="text-miami-pink font-black text-sm uppercase tracking-widest">
-                                Load Design
+                                {designWizardMode === 'manage' ? 'Manage Design' : 
+                                 designWizardMode === 'placement' ? 'Design Placement' : 
+                                 'Load Design'}
                             </h3>
                             <button onClick={() => setDesignWizardOpen(false)} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-900 text-gray-500 hover:text-white transition-colors">✕</button>
                         </div>
 
                         {/* Step Content */}
-                        <div className="flex-1 overflow-y-auto p-6 min-h-[40vh]">
+                        <div className="flex-1 overflow-y-auto p-6">
                             {designWizardMode === 'select' && (
                                 <div className="space-y-4">
                                     <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest mb-4">Select Source</p>
@@ -1311,12 +1315,172 @@ export const StudioModule: React.FC = () => {
                                     </div>
                                 </div>
                             )}
+
+                            {designWizardMode === 'manage' && (
+                                <div className="space-y-4">
+                                    <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest mb-4">Manage Design</p>
+                                    <div className="grid grid-cols-1 gap-3">
+                                        <button 
+                                            onClick={() => setDesignWizardMode('select')}
+                                            className="p-4 rounded-2xl border-2 text-left transition-all flex items-center gap-4 bg-black/40 border-gray-800 hover:border-miami-cyan"
+                                        >
+                                            <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl bg-miami-cyan/20 text-miami-cyan">
+                                                🔄
+                                            </div>
+                                            <div>
+                                                <span className="block font-black text-white capitalize">Change Image</span>
+                                                <span className="block text-[10px] text-gray-500 mt-0.5">
+                                                    Load a different design
+                                                </span>
+                                            </div>
+                                        </button>
+
+                                        <button 
+                                            onClick={() => setDesignWizardMode('placement')}
+                                            className="p-4 rounded-2xl border-2 text-left transition-all flex items-center gap-4 bg-black/40 border-gray-800 hover:border-miami-pink"
+                                        >
+                                            <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl bg-miami-pink/20 text-miami-pink">
+                                                📍
+                                            </div>
+                                            <div>
+                                                <span className="block font-black text-white capitalize">Modify Placement</span>
+                                                <span className="block text-[10px] text-gray-500 mt-0.5">
+                                                    Move or position the image
+                                                </span>
+                                            </div>
+                                        </button>
+
+                                        <button 
+                                            onClick={() => { clearDesign(); setDesignWizardOpen(false); }}
+                                            className="p-4 rounded-2xl border-2 text-left transition-all flex items-center gap-4 bg-black/40 border-gray-800 hover:border-red-500/50"
+                                        >
+                                            <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl bg-red-500/10 text-red-400">
+                                                🗑
+                                            </div>
+                                            <div>
+                                                <span className="block font-black text-red-400 capitalize">Remove Image</span>
+                                                <span className="block text-[10px] text-gray-500 mt-0.5">
+                                                    Clear the canvas entirely
+                                                </span>
+                                            </div>
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {designWizardMode === 'placement' && (() => {
+                                const isSvg = fileKind === 'svg';
+                                const defaultAppDpi = isSvg ? svgDpi : bitmapDpi;
+                                const commonDpis = isSvg ? [72, 90, 96] : [254, 318, 508];
+                                if (!commonDpis.includes(defaultAppDpi)) commonDpis.push(defaultAppDpi);
+                                commonDpis.sort((a,b) => a-b);
+
+                                return (
+                                <div className="space-y-6">
+                                    <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest mb-4">Position, Scale & DPI</p>
+                                    
+                                    <div className="bg-black/40 border border-gray-800 rounded-2xl p-6">
+                                        <div className="grid grid-cols-3 gap-4 mb-6">
+                                            <div>
+                                                <label className="block text-[10px] text-gray-400 mb-2 uppercase font-bold">X (mm)</label>
+                                                <NumericInput 
+                                                    value={posX}
+                                                    onChange={val => { setPlacement({ posX: val }); bumpRender(); }}
+                                                    className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-xl p-3 text-white text-sm font-mono outline-none transition-colors"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] text-gray-400 mb-2 uppercase font-bold">Y (mm)</label>
+                                                <NumericInput 
+                                                    value={posY}
+                                                    onChange={val => { setPlacement({ posY: val }); bumpRender(); }}
+                                                    className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-xl p-3 text-white text-sm font-mono outline-none transition-colors"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] text-gray-400 mb-2 uppercase font-bold">Scale %</label>
+                                                <NumericInput 
+                                                    value={scalePct}
+                                                    onChange={val => { setPlacement({ scalePct: val }); bumpRender(); }}
+                                                    min={1} max={5000}
+                                                    className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-xl p-3 text-white text-sm font-mono outline-none transition-colors"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="mb-6">
+                                            <label className="block text-[10px] text-gray-400 mb-2 uppercase font-bold">
+                                                {isSvg ? 'SVG DPI' : 'Bitmap DPI'}
+                                            </label>
+                                            <div className="flex flex-wrap gap-2 mb-3">
+                                                {commonDpis.map(val => (
+                                                    <button
+                                                        key={val}
+                                                        onClick={() => { setShowCustomDpi(false); setDpi(val); bumpRender(); }}
+                                                        className={`px-3 py-2 rounded-xl text-xs font-bold transition-all border ${!showCustomDpi && dpi === val ? 'bg-miami-cyan/20 border-miami-cyan text-miami-cyan shadow-[0_0_10px_rgba(0,240,255,0.1)]' : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-500 hover:text-white'}`}
+                                                    >
+                                                        {val} {val === defaultAppDpi ? '(Default)' : ''}
+                                                    </button>
+                                                ))}
+                                                <button
+                                                    onClick={() => setShowCustomDpi(true)}
+                                                    className={`px-3 py-2 rounded-xl text-xs font-bold transition-all border ${showCustomDpi || !commonDpis.includes(dpi) ? 'bg-miami-cyan/20 border-miami-cyan text-miami-cyan shadow-[0_0_10px_rgba(0,240,255,0.1)]' : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-500 hover:text-white'}`}
+                                                >
+                                                    Other
+                                                </button>
+                                            </div>
+                                            {(showCustomDpi || !commonDpis.includes(dpi)) && (
+                                                <NumericInput 
+                                                    value={dpi}
+                                                    onChange={val => { setDpi(val); bumpRender(); }}
+                                                    min={1}
+                                                    className="w-full max-w-[120px] bg-black border border-miami-cyan/50 focus:border-miami-cyan rounded-xl p-3 text-white text-sm font-mono outline-none transition-colors"
+                                                />
+                                            )}
+                                        </div>
+
+                                        {lensApiUrl && (
+                                            <button 
+                                                onClick={() => { setDesignWizardOpen(false); openLensOverlay(); }}
+                                                className="w-full py-4 flex items-center justify-center gap-2 bg-gradient-to-r from-miami-cyan/20 to-miami-purple/20 border border-miami-cyan/40 hover:border-miami-cyan text-miami-cyan font-black rounded-xl text-sm transition-all shadow-[0_0_10px_rgba(0,240,255,0.08)]"
+                                            >
+                                                <svg width="18" height="18" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                    <circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.2"/>
+                                                    <circle cx="8" cy="8" r="2.5" stroke="currentColor" strokeWidth="1.2"/>
+                                                    <line x1="8" y1="1" x2="8" y2="3.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                                                    <line x1="8" y1="12.5" x2="8" y2="15" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                                                    <line x1="1" y1="8" x2="3.5" y2="8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                                                    <line x1="12.5" y1="8" x2="15" y2="8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                                                </svg>
+                                                Place with Lens
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                                );
+                            })()}
                         </div>
 
                         {/* Footer */}
-                        {designWizardMode !== 'select' && (
+                        {(designWizardMode !== 'select' && designWizardMode !== 'manage') && (
                             <div className="p-6 border-t border-gray-800 bg-black/40 flex gap-3">
-                                <button onClick={() => setDesignWizardMode('select')} className="px-6 py-4 bg-gray-900 text-white font-black rounded-2xl border border-gray-700 active:scale-95 transition-all">Back</button>
+                                <button 
+                                    onClick={() => {
+                                        if (designWizardMode === 'placement') setDesignWizardMode('manage');
+                                        else if (designWizardMode === 'saved' || designWizardMode === 'new') setDesignWizardMode('select');
+                                    }} 
+                                    className="px-6 py-4 bg-gray-900 text-white font-black rounded-2xl border border-gray-700 active:scale-95 transition-all"
+                                >
+                                    Back
+                                </button>
+                                {designWizardMode === 'placement' && (
+                                    <button 
+                                        onClick={() => setDesignWizardOpen(false)}
+                                        className="flex-1 py-4 bg-miami-cyan text-black font-black rounded-2xl shadow-[0_0_15px_rgba(0,240,255,0.2)] active:scale-95 transition-all"
+                                    >
+                                        Done
+                                    </button>
+                                )}
                             </div>
                         )}
                     </div>
@@ -1630,17 +1794,23 @@ export const StudioModule: React.FC = () => {
                             🎨 Load Design
                         </button>
                     ) : (
-                        <div className="flex gap-2 items-center">
-                            <div className="flex-1 min-w-0 bg-black/60 border border-gray-800 rounded-xl px-3 py-2 flex items-center gap-2">
-                                <span>{fileKind === 'svg' ? '📐' : '🖼️'}</span>
-                                <span className="text-xs text-gray-300 truncate font-mono">{fileName}</span>
-                                <span className={`ml-auto flex-shrink-0 text-[9px] px-2 py-0.5 rounded font-black uppercase ${fileKind === 'svg' ? 'bg-miami-pink/20 text-miami-pink' : 'bg-miami-cyan/20 text-miami-cyan'}`}>
-                                    {fileKind.toUpperCase()}
-                                </span>
+                        <div className="flex flex-col gap-2">
+                            <div className="flex gap-2 items-center">
+                                <div className="flex-1 min-w-0 bg-black/60 border border-gray-800 rounded-xl px-3 py-2 flex items-center gap-2">
+                                    <span>{fileKind === 'svg' ? '📐' : '🖼️'}</span>
+                                    <span className="text-xs text-gray-300 truncate font-mono flex-1">{fileName}</span>
+                                    <span className={`ml-auto flex-shrink-0 text-[9px] px-2 py-0.5 rounded font-black uppercase ${fileKind === 'svg' ? 'bg-miami-pink/20 text-miami-pink' : 'bg-miami-cyan/20 text-miami-cyan'}`}>
+                                        {fileKind.toUpperCase()}
+                                    </span>
+                                </div>
+                                <button 
+                                    onClick={openDesignWizard} 
+                                    title="Edit Design"
+                                    className="flex-shrink-0 w-20 py-2 bg-miami-cyan/10 border border-miami-cyan/40 text-miami-cyan hover:bg-miami-cyan/20 rounded-xl text-xs font-black transition-all shadow-[0_0_10px_rgba(0,240,255,0)] hover:shadow-[0_0_10px_rgba(0,240,255,0.08)] flex items-center justify-center"
+                                >
+                                    Edit
+                                </button>
                             </div>
-                            <button onClick={() => fileInputRef.current?.click()} className="flex-shrink-0 px-3 py-2 bg-black border border-gray-700 rounded-xl text-xs text-gray-400 hover:text-white hover:border-gray-500 transition-colors font-bold">
-                                Replace
-                            </button>
                         </div>
                     )}
 
@@ -1710,74 +1880,7 @@ export const StudioModule: React.FC = () => {
                         </div>
                     )}
 
-                    {/* Position, Scale & DPI */}
-                    {fileKind && (
-                        <div className="bg-black/40 border border-gray-800 rounded-xl p-3">
-                            <p className="text-[10px] uppercase text-gray-400 font-bold tracking-widest mb-2.5">Position, Scale &amp; DPI</p>
-                            <div className="grid grid-cols-3 gap-2 mb-3">
-                                {[
-                                    { label: 'X (mm)',  value: posX,     min: undefined, max: mmW, step: 1, set: (v: number) => setPlacement({ posX: v }) },
-                                    { label: 'Y (mm)',  value: posY,     min: undefined, max: mmH, step: 1, set: (v: number) => setPlacement({ posY: v }) },
-                                    { label: 'Scale %', value: scalePct, min: 1, max: 500, step: 5, set: (v: number) => setPlacement({ scalePct: v }) },
-                                ].map(({ label, value, min, set }) => (
-                                    <div key={label}>
-                                        <label className="block text-[9px] text-gray-400 mb-1 uppercase font-bold">{label}</label>
-                                        <NumericInput value={value}
-                                            onChange={val => { set(val); bumpRender(); }}
-                                            min={min}
-                                            className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-lg p-2 text-white text-sm font-mono outline-none transition-colors" />
-                                    </div>
-                                ))}
-                            </div>
-                            <div className="border-t border-gray-800/60 pt-3">
-                                <div className="flex items-center gap-2 mb-1.5">
-                                    <div className="flex-1">
-                                        <label className="block text-[9px] text-gray-400 mb-1 uppercase font-bold">
-                                            {fileKind === 'svg' ? 'SVG DPI' : 'Bitmap DPI'}
-                                        </label>
-                                        <NumericInput value={dpi}
-                                            onChange={val => { setDpi(val); bumpRender(); }}
-                                            min={1}
-                                            className="w-full bg-black border border-gray-700 focus:border-miami-pink rounded-lg p-2 text-white font-mono outline-none transition-colors" />
-                                    </div>
-                                    <div className="flex gap-1 mt-4 flex-shrink-0">
-                                        {[72, 96, 300].map(d => (
-                                            <button key={d} onClick={() => { setDpi(d); bumpRender(); }}
-                                                className={`px-2.5 py-1.5 rounded-lg text-[10px] font-black border transition-all ${dpi === d ? 'bg-miami-pink text-black border-miami-pink' : 'bg-black/60 text-gray-500 border-gray-700 hover:border-gray-400 hover:text-gray-300'}`}>
-                                                {d}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                                {designImgRef.current && (
-                                    <p className="text-[9px] text-gray-500 font-mono">
-                                        {physW.toFixed(2)} mm × {physH.toFixed(2)} mm
-                                        {physUnits === 'doc'
-                                            ? <span style={{color:'rgba(0,220,160,0.75)'}}> · document units</span>
-                                            : <> · {dpi} DPI</>}
-                                    </p>
-                                )}
-                            </div>
-                            {/* Place with Lens — only shown when Lens module is configured */}
-                            {lensApiUrl && (
-                                <button
-                                    id="place-with-lens-btn"
-                                    onClick={openLensOverlay}
-                                    className="mt-3 w-full py-3 flex items-center justify-center gap-2 bg-gradient-to-r from-miami-cyan/20 to-miami-purple/20 border border-miami-cyan/40 hover:border-miami-cyan text-miami-cyan font-black rounded-xl text-sm transition-all active:scale-[0.97] shadow-[0_0_10px_rgba(0,240,255,0.08)] hover:shadow-[0_0_18px_rgba(0,240,255,0.2)]"
-                                >
-                                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                        <circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.2"/>
-                                        <circle cx="8" cy="8" r="2.5" stroke="currentColor" strokeWidth="1.2"/>
-                                        <line x1="8" y1="1" x2="8" y2="3.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-                                        <line x1="8" y1="12.5" x2="8" y2="15" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-                                        <line x1="1" y1="8" x2="3.5" y2="8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-                                        <line x1="12.5" y1="8" x2="15" y2="8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-                                    </svg>
-                                    Place with Lens
-                                </button>
-                            )}
-                        </div>
-                    )}
+
 
 
                     {/* Generate GCode */}
