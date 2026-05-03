@@ -1164,8 +1164,8 @@ export const StudioModule: React.FC = () => {
         if (op) {
             setEditingOpId(op.id);
             setDraftOp({ ...op });
-            // For SVG, allow re-selecting paths. For Raster, go straight to settings.
-            setWizardStep(op.opType === 'raster' ? 3 : 2);
+            // Step 0 is the new Manage Operation step
+            setWizardStep(0);
         } else {
             setEditingOpId(null);
             const defaultType = fileKind === 'bitmap' ? 'raster' : 'cut';
@@ -1173,10 +1173,7 @@ export const StudioModule: React.FC = () => {
                 opType: defaultType,
                 pathIds: [],
                 name: '',
-                params: {
-                    power: 850, minPower: 0, rate: 1500, passes: 1,
-                    airAssist: false, margin: 0, lineDistance: 0.1, lineAngle: 0
-                }
+                params: { ...useJobOperationsStore.getState().lastParams }
             });
             // If bitmap, only one type exists, so skip step 1
             setWizardStep(fileKind === 'bitmap' ? 3 : 1);
@@ -1201,6 +1198,10 @@ export const StudioModule: React.FC = () => {
         } else {
             addOperation(finalOp);
         }
+        
+        // Save these params as the last used
+        useJobOperationsStore.getState().setLastParams(finalOp.params);
+        
         setWizardOpen(false);
     };
 
@@ -1495,13 +1496,15 @@ export const StudioModule: React.FC = () => {
                         <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between bg-black/40">
                             <div>
                                 <h3 className="text-miami-cyan font-black text-sm uppercase tracking-widest">
-                                    {editingOpId ? 'Edit Operation' : 'New Operation'}
+                                    {wizardStep === 0 ? 'Manage Operation' : editingOpId ? 'Edit Operation' : 'New Operation'}
                                 </h3>
-                                <div className="flex gap-1 mt-1">
-                                    {[1, 2, 3].map(s => (
-                                        <div key={s} className={`h-1 w-8 rounded-full transition-colors ${wizardStep >= s ? 'bg-miami-cyan' : 'bg-gray-800'}`} />
-                                    ))}
-                                </div>
+                                {wizardStep > 0 && (
+                                    <div className="flex gap-1 mt-1">
+                                        {[1, 2, 3].map(s => (
+                                            <div key={s} className={`h-1 w-8 rounded-full transition-colors ${wizardStep >= s ? 'bg-miami-cyan' : 'bg-gray-800'}`} />
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                             <button onClick={() => setWizardOpen(false)} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-900 text-gray-500 hover:text-white transition-colors">✕</button>
                         </div>
@@ -1509,6 +1512,76 @@ export const StudioModule: React.FC = () => {
                         {/* Step Content */}
                         <div className="flex-1 overflow-y-auto p-6">
                             
+                            {/* STEP 0: MANAGE OPERATION (Editing Only) */}
+                            {wizardStep === 0 && (
+                                <div className="space-y-4">
+                                    <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest mb-4">Manage Operation</p>
+                                    <div className="grid grid-cols-1 gap-3">
+                                        <button 
+                                            onClick={() => setWizardStep(1)}
+                                            className="p-4 rounded-2xl border-2 text-left transition-all flex items-center gap-4 bg-black/40 border-gray-800 hover:border-miami-cyan"
+                                        >
+                                            <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl bg-miami-cyan/20 text-miami-cyan">
+                                                🔄
+                                            </div>
+                                            <div>
+                                                <span className="block font-black text-white capitalize">Change Operation Type</span>
+                                                <span className="block text-[10px] text-gray-500 mt-0.5">
+                                                    Start over and select a new type
+                                                </span>
+                                            </div>
+                                        </button>
+
+                                        {fileKind === 'svg' && (
+                                            <button 
+                                                onClick={() => setWizardStep(2)}
+                                                className="p-4 rounded-2xl border-2 text-left transition-all flex items-center gap-4 bg-black/40 border-gray-800 hover:border-miami-purple"
+                                            >
+                                                <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl bg-miami-purple/20 text-miami-purple">
+                                                    📐
+                                                </div>
+                                                <div>
+                                                    <span className="block font-black text-white capitalize">Change Paths</span>
+                                                    <span className="block text-[10px] text-gray-500 mt-0.5">
+                                                        Select different paths for this operation
+                                                    </span>
+                                                </div>
+                                            </button>
+                                        )}
+
+                                        <button 
+                                            onClick={() => setWizardStep(3)}
+                                            className="p-4 rounded-2xl border-2 text-left transition-all flex items-center gap-4 bg-black/40 border-gray-800 hover:border-miami-pink"
+                                        >
+                                            <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl bg-miami-pink/20 text-miami-pink">
+                                                ⚙️
+                                            </div>
+                                            <div>
+                                                <span className="block font-black text-white capitalize">Change Operation Options</span>
+                                                <span className="block text-[10px] text-gray-500 mt-0.5">
+                                                    Adjust power, speed, passes, etc.
+                                                </span>
+                                            </div>
+                                        </button>
+
+                                        <button 
+                                            onClick={() => { removeOperation(editingOpId!); setWizardOpen(false); }}
+                                            className="p-4 rounded-2xl border-2 text-left transition-all flex items-center gap-4 bg-black/40 border-gray-800 hover:border-red-500/50"
+                                        >
+                                            <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl bg-red-500/10 text-red-400">
+                                                🗑
+                                            </div>
+                                            <div>
+                                                <span className="block font-black text-red-400 capitalize">Remove Operation</span>
+                                                <span className="block text-[10px] text-gray-500 mt-0.5">
+                                                    Delete this operation
+                                                </span>
+                                            </div>
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
                             {/* STEP 1: TYPE SELECTION */}
                             {wizardStep === 1 && (
                                 <div className="space-y-4">
@@ -1794,10 +1867,19 @@ export const StudioModule: React.FC = () => {
                             🎨 Load Design
                         </button>
                     ) : (
-                        <div className="flex flex-col gap-2">
+                        <div className="bg-black/40 border border-gray-800 rounded-xl p-3">
+                            <div className="flex items-center justify-between mb-3">
+                                <p className="text-[10px] uppercase text-gray-400 font-bold tracking-widest">Images (1)</p>
+                            </div>
                             <div className="flex gap-2 items-center">
                                 <div className="flex-1 min-w-0 bg-black/60 border border-gray-800 rounded-xl px-3 py-2 flex items-center gap-2">
-                                    <span>{fileKind === 'svg' ? '📐' : '🖼️'}</span>
+                                    {designImgRef.current ? (
+                                        <div className="w-6 h-6 rounded bg-white overflow-hidden flex-shrink-0 flex items-center justify-center">
+                                            <img src={designImgRef.current.src} className="w-full h-full object-contain" />
+                                        </div>
+                                    ) : (
+                                        <span>{fileKind === 'svg' ? '📐' : '🖼️'}</span>
+                                    )}
                                     <span className="text-xs text-gray-300 truncate font-mono flex-1">{fileName}</span>
                                     <span className={`ml-auto flex-shrink-0 text-[9px] px-2 py-0.5 rounded font-black uppercase ${fileKind === 'svg' ? 'bg-miami-pink/20 text-miami-pink' : 'bg-miami-cyan/20 text-miami-cyan'}`}>
                                         {fileKind.toUpperCase()}
@@ -1834,47 +1916,71 @@ export const StudioModule: React.FC = () => {
                                 </div>
                             ) : (
                                 <div className="space-y-2">
-                                    {operations.map((op, idx) => (
+                                    {operations.map((op, idx) => {
+                                        let opTitle = op.name;
+                                        let iconColorStyle = {};
+                                        let iconClasses = "w-6 h-6 rounded flex items-center justify-center text-sm flex-shrink-0";
+                                        
+                                        if (op.opType === 'raster') {
+                                            iconClasses += ' bg-miami-cyan/20 text-miami-cyan';
+                                            opTitle = `Bitmap`;
+                                        } else if (op.pathIds && op.pathIds.length > 0) {
+                                            const firstPath = svgPaths.find(p => p.id === op.pathIds[0]);
+                                            if (firstPath) {
+                                                const pathName = firstPath.label || firstPath.id;
+                                                const extra = op.pathIds.length > 1 ? ` + ${op.pathIds.length - 1} more` : '';
+                                                opTitle = `${pathName}${extra}`;
+                                                
+                                                let color = op.opType === 'cut' ? firstPath.strokeColor : firstPath.fillColor;
+                                                
+                                                if (color && color !== 'none') {
+                                                    // Handle black colors in dark theme by using a slightly lighter gray so it's visible, or keep it black but with white border
+                                                    if (color === '#000000' || color === 'black' || color === '#000' || color === 'rgb(0,0,0)') {
+                                                        iconColorStyle = { backgroundColor: '#000000', border: '1px solid #444' };
+                                                    } else {
+                                                        iconColorStyle = { backgroundColor: color, border: `1px solid ${color}` };
+                                                    }
+                                                } else {
+                                                    // fallback to miami colors solid block
+                                                    iconColorStyle = { backgroundColor: op.opType === 'cut' ? '#ff007f' : '#7000ff' };
+                                                }
+                                                iconClasses = "w-6 h-6 rounded flex items-center justify-center text-sm flex-shrink-0";
+                                            }
+                                        } else {
+                                            iconColorStyle = { backgroundColor: op.opType === 'cut' ? '#ff007f' : '#7000ff' };
+                                            iconClasses = "w-6 h-6 rounded flex items-center justify-center text-sm flex-shrink-0";
+                                        }
+
+                                        return (
                                         <div key={op.id} className="bg-black/40 border border-gray-800 rounded-xl overflow-hidden group">
-                                            <div className="flex items-center gap-3 p-3">
-                                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm ${
-                                                    op.opType === 'cut' ? 'bg-miami-pink/20 text-miami-pink' : 
-                                                    op.opType === 'fill' ? 'bg-miami-purple/20 text-miami-purple' : 
-                                                    'bg-miami-cyan/20 text-miami-cyan'
-                                                }`}>
-                                                    {op.opType === 'cut' ? '✂' : op.opType === 'fill' ? '▧' : '🖼️'}
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-[10px] font-black text-gray-600">#{idx + 1}</span>
-                                                        <span className="text-xs font-bold text-white truncate">{op.name}</span>
+                                            <div className="flex items-center gap-2 p-2">
+                                                <div className="flex-1 min-w-0 bg-black/60 border border-gray-800 rounded-xl px-3 py-2 flex items-center gap-2">
+                                                    <div className={iconClasses} style={iconColorStyle}>
+                                                        {op.opType === 'raster' && '🖼️'}
                                                     </div>
-                                                    <p className="text-[9px] text-gray-500 font-mono mt-0.5">
-                                                        {op.opType.toUpperCase()} · {op.params.power}S · {toDisplay(op.params.rate)} {displayRateUnit}
-                                                    </p>
-                                                </div>
-                                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <button onClick={() => moveOp(op.id, 'up')} disabled={idx === 0} className="w-7 h-7 flex items-center justify-center rounded-lg bg-gray-900 text-gray-400 hover:text-white disabled:opacity-20 transition-all">↑</button>
-                                                    <button onClick={() => moveOp(op.id, 'down')} disabled={idx === operations.length - 1} className="w-7 h-7 flex items-center justify-center rounded-lg bg-gray-900 text-gray-400 hover:text-white disabled:opacity-20 transition-all">↓</button>
+                                                    <div className="flex-1 min-w-0 text-left">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-[10px] font-black text-gray-600">#{idx + 1}</span>
+                                                            <span className="text-xs font-bold text-white truncate">{opTitle}</span>
+                                                        </div>
+                                                        <p className="text-[9px] text-gray-500 font-mono mt-0.5">
+                                                            {op.opType.toUpperCase()} · {Math.round((op.params.power / 1000) * 100)}% Power · {toDisplay(op.params.rate)} {displayRateUnit}
+                                                        </p>
+                                                    </div>
+                                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-auto">
+                                                        <button onClick={() => moveOp(op.id, 'up')} disabled={idx === 0} className="w-6 h-6 flex items-center justify-center rounded bg-gray-900 text-gray-400 hover:text-white disabled:opacity-20 transition-all">↑</button>
+                                                        <button onClick={() => moveOp(op.id, 'down')} disabled={idx === operations.length - 1} className="w-6 h-6 flex items-center justify-center rounded bg-gray-900 text-gray-400 hover:text-white disabled:opacity-20 transition-all">↓</button>
+                                                    </div>
                                                 </div>
                                                 <button 
                                                     onClick={() => openWizard(op)}
-                                                    className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-[10px] font-black transition-all"
+                                                    className="flex-shrink-0 w-20 py-2 bg-miami-cyan/10 border border-miami-cyan/40 text-miami-cyan hover:bg-miami-cyan/20 rounded-xl text-xs font-black transition-all shadow-[0_0_10px_rgba(0,240,255,0)] hover:shadow-[0_0_10px_rgba(0,240,255,0.08)] flex items-center justify-center"
                                                 >
                                                     Edit
                                                 </button>
-                                                <button onClick={() => removeOperation(op.id)} className="w-8 h-8 flex items-center justify-center text-gray-600 hover:text-red-400 transition-colors">🗑</button>
                                             </div>
-                                            {op.opType !== 'raster' && (
-                                                <div className="px-3 pb-3 flex flex-wrap gap-1">
-                                                    {op.pathIds.slice(0, 3).map(pid => (
-                                                        <span key={pid} className="text-[8px] bg-black/40 border border-gray-800 rounded px-1.5 py-0.5 font-mono text-gray-500">{pid}</span>
-                                                    ))}
-                                                    {op.pathIds.length > 3 && <span className="text-[8px] text-gray-600 font-bold">+{op.pathIds.length - 3} more</span>}
-                                                </div>
-                                            )}
                                         </div>
-                                    ))}
+                                    )})}
                                 </div>
                             )}
                         </div>

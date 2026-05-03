@@ -39,6 +39,8 @@ interface JobOperationsState {
     scalePct: number;
     rotation: number; // degrees
 
+    lastParams: OpParams;
+
     // ── Mutators ──
     setSvgPaths:      (paths: SvgPathInfo[]) => void;
     setDesign:        (type: 'svg' | 'bitmap', source: string, name: string) => void;
@@ -51,6 +53,7 @@ interface JobOperationsState {
     addFromSelection: (opType: LayerOp, name: string, params?: Partial<OpParams>) => void;
     updateOperation:  (id: string, patch: Partial<Omit<JobOperation, 'id'>>) => void;
     updateParams:     (id: string, patch: Partial<OpParams>) => void;
+    setLastParams:    (patch: Partial<OpParams>) => void;
     removeOperation:  (id: string) => void;
     moveOp:           (id: string, dir: 'up' | 'down') => void;
 
@@ -76,6 +79,7 @@ export const useJobOperationsStore = create<JobOperationsState>((set, get) => ({
     posY:            0,
     scalePct:        100,
     rotation:        0,
+    lastParams:      { ...DEFAULT_PARAMS },
 
     setSvgPaths: (paths) => set({ svgPaths: paths, selectedPathIds: [] }),
 
@@ -104,11 +108,11 @@ export const useJobOperationsStore = create<JobOperationsState>((set, get) => ({
     })),
 
     addFromSelection: (opType, name, paramsPatch) => {
-        const { selectedPathIds, operations } = get();
+        const { selectedPathIds, operations, lastParams } = get();
         // For SVG ops (cut/fill), we need a selection. For raster, we don't.
         if (opType !== 'raster' && selectedPathIds.length === 0) return;
         
-        const params: OpParams = { ...DEFAULT_PARAMS, ...paramsPatch };
+        const params: OpParams = { ...lastParams, ...paramsPatch };
         const newOp: JobOperation = {
             id:      uid(),
             name:    name || `${opType.charAt(0).toUpperCase() + opType.slice(1)} ${operations.length + 1}`,
@@ -130,6 +134,11 @@ export const useJobOperationsStore = create<JobOperationsState>((set, get) => ({
         operations: s.operations.map(op =>
             op.id === id ? { ...op, params: { ...op.params, ...patch } } : op
         ),
+        lastParams: { ...s.lastParams, ...patch }
+    })),
+
+    setLastParams: (patch) => set(s => ({
+        lastParams: { ...s.lastParams, ...patch }
     })),
 
     removeOperation: (id) => set(s => ({
