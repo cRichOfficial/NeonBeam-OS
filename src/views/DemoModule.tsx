@@ -25,7 +25,7 @@ export const DemoModule: React.FC = () => {
     ];
 
     return (
-        <View title="UI Component Demo" subtitle="Standardized Library Showcase">
+        <View title="UI Component Demo" subtitle="Standardized Library Showcase" showHomeButton>
             <div className="p-4 space-y-4">
                 
                 <TabControl 

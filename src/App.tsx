@@ -147,17 +147,19 @@ function App() {
                                 isActive ? 'opacity-100' : 'opacity-0 pointer-events-none'
                             }`}
                         >
-                            {/* Sticky header with back button */}
-                            <div className="h-14 flex items-center px-4 bg-black/90 border-b border-gray-800 backdrop-blur-xl sticky top-0 z-50 shadow-sm shadow-miami-pink/5 flex-shrink-0">
-                                <button
-                                    onClick={() => navigateHome()}
-                                    className="text-miami-cyan font-bold flex items-center gap-2 hover:text-white transition-colors py-2 px-3 -ml-3 rounded-lg hover:bg-white/5"
-                                >
-                                    <span className="text-xl leading-none">←</span>
-                                    <span>Home</span>
-                                </button>
-                                <span className="ml-3 text-gray-400 text-sm font-semibold">{mod.title}</span>
-                            </div>
+                            {/* Sticky header with back button (hidden for modules using the new View component) */}
+                            {mod.id !== 'ui_demo' && mod.id !== 'machine_settings' && (
+                                <div className="h-14 flex items-center px-4 bg-black/90 border-b border-gray-800 backdrop-blur-xl sticky top-0 z-50 shadow-sm shadow-miami-pink/5 flex-shrink-0">
+                                    <button
+                                        onClick={() => navigateHome()}
+                                        className="text-miami-cyan font-bold flex items-center gap-2 hover:text-white transition-colors py-2 px-3 -ml-3 rounded-lg hover:bg-white/5"
+                                    >
+                                        <span className="text-xl leading-none">←</span>
+                                        <span>Home</span>
+                                    </button>
+                                    <span className="ml-3 text-gray-400 text-sm font-semibold">{mod.title}</span>
+                                </div>
+                            )}
 
                             {/* Module content — dashboard is fixed-height (no scroll); all others scroll */}
                             <div className={`flex-1 min-h-0 ${mod.id === 'dashboard' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
