@@ -21,15 +21,13 @@ export const BUILT_IN_MACROS: GCodeMacro[] = [
 ];
 
 const DEFAULT_LAYOUT: (string | null)[] = [
-    'builtin_h_all', 'builtin_h_x', 'builtin_h_y',
-    'builtin_set_x', 'builtin_set_y', 'builtin_set_origin',
-    null, null, null,
-    null, null, null
+    'builtin_h_all', 'builtin_h_x', 'builtin_h_y', 'builtin_set_origin',
+    'builtin_set_x', 'builtin_set_y', null, null
 ];
 
 interface MacroStore {
     macros: GCodeMacro[];
-    layout: (string | null)[];  // Exactly 12 slots; null = empty
+    layout: (string | null)[];  // Exactly 8 slots; null = empty
     toggleStates: Record<string, boolean>; // Transient toggles
 
     addMacro: (label: string, gcode: string, color?: string, isToggle?: boolean, gcodeOff?: string) => string;
@@ -88,9 +86,9 @@ export const useMacroStore = create<MacroStore>()(
                 const p = persistedState as Partial<MacroStore> | null;
                 const restoredMacros = p?.macros?.filter(m => !m.isBuiltIn) || [];
                 
-                // Keep the 12-slot layout constraint
+                // Keep the 8-slot layout constraint
                 let layout = p?.layout;
-                if (!layout || layout.length !== 12) {
+                if (!layout || layout.length !== 8) {
                     layout = [...DEFAULT_LAYOUT];
                 }
 

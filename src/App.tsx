@@ -148,7 +148,7 @@ function App() {
                             }`}
                         >
                             {/* Sticky header with back button (hidden for modules using the new View component) */}
-                            {mod.id !== 'ui_demo' && mod.id !== 'machine_settings' && mod.id !== 'app_settings' && mod.id !== 'material_presets' && (
+                            {mod.id !== 'ui_demo' && mod.id !== 'machine_settings' && mod.id !== 'app_settings' && mod.id !== 'material_presets' && mod.id !== 'gcode_studio' && (
                                 <div className="h-14 flex items-center px-4 bg-black/90 border-b border-gray-800 backdrop-blur-xl sticky top-0 z-50 shadow-sm shadow-miami-pink/5 flex-shrink-0">
                                     <button
                                         onClick={() => navigateHome()}
