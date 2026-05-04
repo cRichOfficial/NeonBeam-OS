@@ -41,12 +41,12 @@ export const RadioGroup: React.FC<RadioGroupProps> = ({
     };
 
     return (
-        <div className={`flex gap-1.5 ${className}`}>
+        <div className={`flex flex-wrap gap-1.5 ${className}`}>
             {options.map((opt) => (
                 <button 
                     key={String(opt.value)} 
                     onClick={() => onChange(opt.value)}
-                    className={`flex-1 py-1.5 rounded-lg text-[10px] font-black border transition-all ${getColorClasses(value === opt.value, opt.color)}`}
+                    className={`flex-1 min-w-fit px-2 py-1.5 rounded-lg text-[10px] whitespace-nowrap font-black border transition-all ${getColorClasses(value === opt.value, opt.color)}`}
                 >
                     {opt.label}
                 </button>

@@ -28,6 +28,9 @@ export const MaterialPresetsModule: React.FC = () => {
     const feedUnits = useAppSettingsStore(state => state.settings.feedUnits);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    const toDisplay = (mmMin: number) => feedUnits === 'mm/s' ? Number((mmMin / 60).toFixed(1)) : mmMin;
+    const toMmPerMin = (disp: number) => feedUnits === 'mm/s' ? disp * 60 : disp;
+
     const [wizardOpen, setWizardOpen] = useState(false);
     const [wizardStep, setWizardStep] = useState(1);
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -80,7 +83,7 @@ export const MaterialPresetsModule: React.FC = () => {
             setDraftPreset({
                 ...defaultNewForm,
                 power: 100,
-                rate: feedUnits === 'mm/s' ? 30 : 1800
+                rate: 1800
             });
         }
         setWizardStep(1);
@@ -168,8 +171,8 @@ export const MaterialPresetsModule: React.FC = () => {
                             <div>
                                 <label className="block text-[10px] text-gray-500 mb-2 uppercase font-bold tracking-widest">Rate ({feedUnits})</label>
                                 <NumericInput 
-                                    value={draftPreset.rate || 0}
-                                    onChange={val => setDraftPreset({ ...draftPreset, rate: val })}
+                                    value={toDisplay(draftPreset.rate || 0)}
+                                    onChange={val => setDraftPreset({ ...draftPreset, rate: toMmPerMin(val) })}
                                     className="w-full bg-miami-cyan/10 border border-miami-cyan/50 focus:border-miami-cyan rounded-lg p-3 text-white text-sm font-mono outline-none transition-colors"
                                 />
                             </div>
@@ -305,7 +308,7 @@ export const MaterialPresetsModule: React.FC = () => {
                     <ItemBadge
                         key={p.id}
                         title={p.name}
-                        subtitle={`${p.opType} • ${p.material} • ${p.power}% • ${p.rate} ${feedUnits}`}
+                        subtitle={`${p.opType} • ${p.material} • ${p.power}% • ${toDisplay(p.rate)} ${feedUnits}`}
                         onClick={() => openWizard(p)}
                         onEdit={() => openWizard(p)}
                         onDelete={() => deletePreset(p.id)}

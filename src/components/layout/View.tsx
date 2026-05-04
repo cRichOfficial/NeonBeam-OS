@@ -38,7 +38,7 @@ export const View: React.FC<ViewProps> = ({ title, subtitle, showHomeButton, chi
             </div>
 
             {/* View Content */}
-            <div className="flex-1 overflow-y-auto pb-10">
+            <div className="flex-1 overflow-auto pb-10">
                 {children}
             </div>
         </div>

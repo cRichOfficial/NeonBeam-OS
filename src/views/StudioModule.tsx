@@ -11,6 +11,17 @@ import { useJobOperationsStore } from '../store/jobOperationsStore';
 import type { LayerOp } from '../store/jobOperationsStore';
 import { lensService } from '../services/lensService';
 import type { DetectionResult } from '../types/lens';
+import { View } from '../components/layout/View';
+import { SectionCard } from '../components/layout/SectionCard';
+import { InstructionCard } from '../components/ui/InstructionCard';
+import { TabControl } from '../components/ui/TabControl';
+import { WorkspaceGrid } from '../components/workspace/WorkspaceGrid';
+import { ItemContainer } from '../components/ui/ItemContainer';
+import { ItemBadge } from '../components/ui/ItemBadge';
+import { ActionButton } from '../components/ui/ActionButton';
+import { Wizard, WizardStep } from '../components/ui/Wizard';
+import { RadioGroup } from '../components/ui/RadioGroup';
+import { ToggleSwitch } from '../components/ui/ToggleSwitch';
 
 const _COMM_API_FALLBACK = '';
 
@@ -75,6 +86,18 @@ const DW=CW-ML, DH=CH-MB;
 
 // ── Component ──────────────────────────────────────────────────────────────────
 export const StudioModule: React.FC = () => {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [gridWidth, setGridWidth] = useState(CW);
+    useEffect(() => {
+        if (!containerRef.current) return;
+        const observer = new ResizeObserver(entries => {
+            const w = entries[0].contentRect.width;
+            if (w > 0) setGridWidth(w);
+        });
+        observer.observe(containerRef.current);
+        return () => observer.disconnect();
+    }, []);
+
     // Store selectors
     const svgDpi    = useAppSettingsStore(s => s.settings.svgDpi);
     const bitmapDpi = useAppSettingsStore(s => s.settings.bitmapDpi);
@@ -110,7 +133,8 @@ export const StudioModule: React.FC = () => {
     
     // ── Design Wizard State ──
     const [designWizardOpen, setDesignWizardOpen] = useState(false);
-    const [designWizardMode, setDesignWizardMode] = useState<'select' | 'saved' | 'new' | 'manage' | 'placement'>('select');
+    const [designWizardStep, setDesignWizardStep] = useState(1);
+    const [designSource, setDesignSource] = useState<'existing' | 'new'>('existing');
     const [savedImages, setSavedImages] = useState<{filename: string, url: string}[]>([]);
     const [saveToEngraver, setSaveToEngraver] = useState(false);
     const [showCustomDpi, setShowCustomDpi] = useState(false);
@@ -1113,13 +1137,13 @@ export const StudioModule: React.FC = () => {
                 }
             }
             loadFile(f); 
-            setDesignWizardMode('placement');
+            setDesignWizardStep(3);
         }
         e.target.value = '';
     };
 
     const openDesignWizard = () => {
-        setDesignWizardMode(fileKind ? 'manage' : 'select');
+        setDesignWizardStep(fileKind ? 3 : 1);
         setDesignWizardOpen(true);
     };
 
@@ -1127,7 +1151,6 @@ export const StudioModule: React.FC = () => {
         try {
             const res = await axios.get('/api/images');
             setSavedImages(res.data);
-            setDesignWizardMode('saved');
         } catch (err) {
             console.error('Failed to fetch saved images', err);
             alert('Failed to reach the image server.');
@@ -1141,7 +1164,7 @@ export const StudioModule: React.FC = () => {
             const blob = await res.blob();
             const file = new File([blob], filename, { type: res.headers.get('content-type') || 'image/png' });
             loadFile(file);
-            setDesignWizardMode('placement');
+            setDesignWizardStep(3);
         } catch (err) {
             console.error('Failed to load image', err);
             alert('Failed to load the image.');
@@ -1165,7 +1188,7 @@ export const StudioModule: React.FC = () => {
             setEditingOpId(op.id);
             setDraftOp({ ...op });
             // Step 0 is the new Manage Operation step
-            setWizardStep(0);
+            setWizardStep(1);
         } else {
             setEditingOpId(null);
             const defaultType = fileKind === 'bitmap' ? 'raster' : 'cut';
@@ -1175,8 +1198,7 @@ export const StudioModule: React.FC = () => {
                 name: '',
                 params: { ...useJobOperationsStore.getState().lastParams }
             });
-            // If bitmap, only one type exists, so skip step 1
-            setWizardStep(fileKind === 'bitmap' ? 3 : 1);
+            setWizardStep(1);
         }
         setWizardOpen(true);
     };
@@ -1207,798 +1229,475 @@ export const StudioModule: React.FC = () => {
 
     // ── Render ────────────────────────────────────────────────────────────────
     return (
-        <div className="flex flex-col h-full bg-black/10">
+        <View title="Design Studio" subtitle={`⊕ BL origin · ${mmW}×${mmH} mm`} showHomeButton>
+            <input type="file" ref={fileInputRef} className="hidden" accept=".svg,.png,.jpg,.jpeg,.bmp,.webp" onChange={handleFileChange} />
             
-            {/* ── DESIGN WIZARD MODAL ── */}
-            {designWizardOpen && (
-                <div className="fixed inset-0 z-[300] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-                    <div className="w-full max-w-lg bg-[#0c0c14] border-t sm:border border-gray-800 rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in slide-in-from-bottom duration-300">
-                        {/* Header */}
-                        <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between bg-black/40">
-                            <h3 className="text-miami-pink font-black text-sm uppercase tracking-widest">
-                                {designWizardMode === 'manage' ? 'Manage Design' : 
-                                 designWizardMode === 'placement' ? 'Design Placement' : 
-                                 'Load Design'}
-                            </h3>
-                            <button onClick={() => setDesignWizardOpen(false)} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-900 text-gray-500 hover:text-white transition-colors">✕</button>
-                        </div>
+            
+            {/* ── DESIGN WIZARD ── */}
+            <Wizard
+                isOpen={designWizardOpen}
+                onClose={() => setDesignWizardOpen(false)}
+                title="Load Design"
+                currentStep={designWizardStep}
+                totalSteps={3}
+                onNext={() => {
+                    if (designWizardStep === 1) {
+                        if (designSource === 'existing') {
+                            fetchSavedImages();
+                        }
+                        setDesignWizardStep(2);
+                    } else if (designWizardStep === 2) {
+                        setDesignWizardStep(3);
+                    }
+                }}
+                onBack={() => setDesignWizardStep(s => s - 1)}
+                onSave={() => setDesignWizardOpen(false)}
+                saveText="Done"
+                nextDisabled={designWizardStep === 2 && !fileKind}
+            >
+                {designWizardStep === 1 && (
+                    <WizardStep title="Select Source" instructions="Choose where to load your design from.">
+                        <RadioGroup
+                            options={[
+                                { value: 'existing', label: 'Start with an existing design' },
+                                { value: 'new', label: 'Start with a new design' }
+                            ]}
+                            value={designSource}
+                            onChange={(v) => setDesignSource(v as 'existing' | 'new')}
+                        />
+                    </WizardStep>
+                )}
 
-                        {/* Step Content */}
-                        <div className="flex-1 overflow-y-auto p-6">
-                            {designWizardMode === 'select' && (
-                                <div className="space-y-4">
-                                    <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest mb-4">Select Source</p>
-                                    <div className="grid grid-cols-1 gap-3">
-                                        <button 
-                                            onClick={fetchSavedImages}
-                                            className="p-4 rounded-2xl border-2 text-left transition-all flex items-center gap-4 bg-black/40 border-gray-800 hover:border-miami-cyan"
-                                        >
-                                            <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl bg-miami-cyan/20 text-miami-cyan">
-                                                📂
-                                            </div>
-                                            <div>
-                                                <span className="block font-black text-white capitalize">Start with an existing design</span>
-                                                <span className="block text-[10px] text-gray-500 mt-0.5">
-                                                    Load an image previously saved to the engraver
-                                                </span>
-                                            </div>
-                                        </button>
-
-                                        <button 
-                                            onClick={() => setDesignWizardMode('new')}
-                                            className="p-4 rounded-2xl border-2 text-left transition-all flex items-center gap-4 bg-black/40 border-gray-800 hover:border-miami-pink"
-                                        >
-                                            <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl bg-miami-pink/20 text-miami-pink">
-                                                ✨
-                                            </div>
-                                            <div>
-                                                <span className="block font-black text-white capitalize">Start with a new design</span>
-                                                <span className="block text-[10px] text-gray-500 mt-0.5">
-                                                    Select an image from your device
-                                                </span>
-                                            </div>
-                                        </button>
+                {designWizardStep === 2 && (
+                    <WizardStep title={designSource === 'existing' ? "Saved Images" : "Upload Design"} instructions={designSource === 'existing' ? "Select an image previously saved to the engraver." : "Select an SVG, PNG, JPG, BMP, or WebP from your device."}>
+                        {designSource === 'existing' ? (
+                            <div className="space-y-4">
+                                {savedImages.length === 0 ? (
+                                    <div className="text-center py-8 border-2 border-dashed border-gray-800 rounded-xl">
+                                        <p className="text-xs text-gray-500 font-bold">No images saved to the engraver.</p>
                                     </div>
-                                </div>
-                            )}
-
-                            {designWizardMode === 'saved' && (
-                                <div className="space-y-4">
-                                    <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest mb-4">Saved Images ({savedImages.length})</p>
-                                    {savedImages.length === 0 ? (
-                                        <div className="text-center py-8">
-                                            <p className="text-xs text-gray-500">No images saved to the engraver.</p>
-                                        </div>
-                                    ) : (
-                                        <div className="grid grid-cols-1 gap-2 max-h-[40vh] overflow-y-auto pr-2">
-                                            {savedImages.map(img => (
-                                                <button key={img.filename} 
-                                                    onClick={() => loadSavedImage(img.filename, img.url)}
-                                                    className="w-full flex items-center gap-3 p-3 rounded-xl border transition-all bg-black/20 border-gray-800 hover:border-miami-cyan"
-                                                >
-                                                    <div className="w-10 h-10 rounded-lg bg-gray-900 flex items-center justify-center overflow-hidden">
-                                                        <img src={img.url} alt={img.filename} className="w-full h-full object-cover opacity-80" />
-                                                    </div>
-                                                    <div className="flex flex-col min-w-0 flex-1 text-left">
-                                                        <span className="text-xs text-white font-bold truncate">{img.filename}</span>
-                                                    </div>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {designWizardMode === 'new' && (
-                                <div className="space-y-6">
-                                    <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest mb-4">Upload Design</p>
-                                    
-                                    <div className="bg-black/40 border border-gray-800 rounded-2xl p-6 text-center">
-                                        <div className="text-4xl mb-4">📁</div>
-                                        <p className="text-sm text-gray-400 mb-6">Select an SVG, PNG, JPG, BMP, or WebP</p>
-                                        
-                                        <div 
-                                            className="flex items-center justify-center gap-3 mb-6 cursor-pointer"
-                                            onClick={() => setSaveToEngraver(!saveToEngraver)}
-                                        >
-                                            <div className={`w-10 h-5 flex items-center rounded-full p-1 transition-colors ${saveToEngraver ? 'bg-miami-pink' : 'bg-gray-800'}`}>
-                                                <div className={`w-3.5 h-3.5 bg-white rounded-full shadow-sm transition-transform duration-200 ${saveToEngraver ? 'translate-x-4' : 'translate-x-0'}`} />
-                                            </div>
-                                            <span className="text-xs text-gray-300 font-bold select-none">💾 Save copy to engraver</span>
-                                        </div>
-
-                                        <button 
-                                            onClick={() => fileInputRef.current?.click()}
-                                            className="px-6 py-3 bg-miami-pink text-black font-black rounded-xl shadow-[0_0_15px_rgba(255,0,127,0.3)] hover:scale-105 active:scale-95 transition-all w-full"
-                                        >
-                                            Choose File
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {designWizardMode === 'manage' && (
-                                <div className="space-y-4">
-                                    <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest mb-4">Manage Design</p>
-                                    <div className="grid grid-cols-1 gap-3">
-                                        <button 
-                                            onClick={() => setDesignWizardMode('select')}
-                                            className="p-4 rounded-2xl border-2 text-left transition-all flex items-center gap-4 bg-black/40 border-gray-800 hover:border-miami-cyan"
-                                        >
-                                            <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl bg-miami-cyan/20 text-miami-cyan">
-                                                🔄
-                                            </div>
-                                            <div>
-                                                <span className="block font-black text-white capitalize">Change Image</span>
-                                                <span className="block text-[10px] text-gray-500 mt-0.5">
-                                                    Load a different design
-                                                </span>
-                                            </div>
-                                        </button>
-
-                                        <button 
-                                            onClick={() => setDesignWizardMode('placement')}
-                                            className="p-4 rounded-2xl border-2 text-left transition-all flex items-center gap-4 bg-black/40 border-gray-800 hover:border-miami-pink"
-                                        >
-                                            <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl bg-miami-pink/20 text-miami-pink">
-                                                📍
-                                            </div>
-                                            <div>
-                                                <span className="block font-black text-white capitalize">Modify Placement</span>
-                                                <span className="block text-[10px] text-gray-500 mt-0.5">
-                                                    Move or position the image
-                                                </span>
-                                            </div>
-                                        </button>
-
-                                        <button 
-                                            onClick={() => { clearDesign(); setDesignWizardOpen(false); }}
-                                            className="p-4 rounded-2xl border-2 text-left transition-all flex items-center gap-4 bg-black/40 border-gray-800 hover:border-red-500/50"
-                                        >
-                                            <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl bg-red-500/10 text-red-400">
-                                                🗑
-                                            </div>
-                                            <div>
-                                                <span className="block font-black text-red-400 capitalize">Remove Image</span>
-                                                <span className="block text-[10px] text-gray-500 mt-0.5">
-                                                    Clear the canvas entirely
-                                                </span>
-                                            </div>
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {designWizardMode === 'placement' && (() => {
-                                const isSvg = fileKind === 'svg';
-                                const defaultAppDpi = isSvg ? svgDpi : bitmapDpi;
-                                const commonDpis = isSvg ? [72, 90, 96] : [254, 318, 508];
-                                if (!commonDpis.includes(defaultAppDpi)) commonDpis.push(defaultAppDpi);
-                                commonDpis.sort((a,b) => a-b);
-
-                                return (
-                                <div className="space-y-6">
-                                    <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest mb-4">Position, Scale & DPI</p>
-                                    
-                                    <div className="bg-black/40 border border-gray-800 rounded-2xl p-6">
-                                        <div className="grid grid-cols-3 gap-4 mb-6">
-                                            <div>
-                                                <label className="block text-[10px] text-gray-400 mb-2 uppercase font-bold">X (mm)</label>
-                                                <NumericInput 
-                                                    value={posX}
-                                                    onChange={val => { setPlacement({ posX: val }); bumpRender(); }}
-                                                    className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-xl p-3 text-white text-sm font-mono outline-none transition-colors"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-[10px] text-gray-400 mb-2 uppercase font-bold">Y (mm)</label>
-                                                <NumericInput 
-                                                    value={posY}
-                                                    onChange={val => { setPlacement({ posY: val }); bumpRender(); }}
-                                                    className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-xl p-3 text-white text-sm font-mono outline-none transition-colors"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-[10px] text-gray-400 mb-2 uppercase font-bold">Scale %</label>
-                                                <NumericInput 
-                                                    value={scalePct}
-                                                    onChange={val => { setPlacement({ scalePct: val }); bumpRender(); }}
-                                                    min={1} max={5000}
-                                                    className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-xl p-3 text-white text-sm font-mono outline-none transition-colors"
-                                                />
-                                            </div>
-                                        </div>
-
-                                        <div className="mb-6">
-                                            <label className="block text-[10px] text-gray-400 mb-2 uppercase font-bold">
-                                                {isSvg ? 'SVG DPI' : 'Bitmap DPI'}
-                                            </label>
-                                            <div className="flex flex-wrap gap-2 mb-3">
-                                                {commonDpis.map(val => (
-                                                    <button
-                                                        key={val}
-                                                        onClick={() => { setShowCustomDpi(false); setDpi(val); bumpRender(); }}
-                                                        className={`px-3 py-2 rounded-xl text-xs font-bold transition-all border ${!showCustomDpi && dpi === val ? 'bg-miami-cyan/20 border-miami-cyan text-miami-cyan shadow-[0_0_10px_rgba(0,240,255,0.1)]' : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-500 hover:text-white'}`}
-                                                    >
-                                                        {val} {val === defaultAppDpi ? '(Default)' : ''}
-                                                    </button>
-                                                ))}
-                                                <button
-                                                    onClick={() => setShowCustomDpi(true)}
-                                                    className={`px-3 py-2 rounded-xl text-xs font-bold transition-all border ${showCustomDpi || !commonDpis.includes(dpi) ? 'bg-miami-cyan/20 border-miami-cyan text-miami-cyan shadow-[0_0_10px_rgba(0,240,255,0.1)]' : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-500 hover:text-white'}`}
-                                                >
-                                                    Other
-                                                </button>
-                                            </div>
-                                            {(showCustomDpi || !commonDpis.includes(dpi)) && (
-                                                <NumericInput 
-                                                    value={dpi}
-                                                    onChange={val => { setDpi(val); bumpRender(); }}
-                                                    min={1}
-                                                    className="w-full max-w-[120px] bg-black border border-miami-cyan/50 focus:border-miami-cyan rounded-xl p-3 text-white text-sm font-mono outline-none transition-colors"
-                                                />
-                                            )}
-                                        </div>
-
-                                        {lensApiUrl && (
-                                            <button 
-                                                onClick={() => { setDesignWizardOpen(false); openLensOverlay(); }}
-                                                className="w-full py-4 flex items-center justify-center gap-2 bg-gradient-to-r from-miami-cyan/20 to-miami-purple/20 border border-miami-cyan/40 hover:border-miami-cyan text-miami-cyan font-black rounded-xl text-sm transition-all shadow-[0_0_10px_rgba(0,240,255,0.08)]"
+                                ) : (
+                                    <div className="grid grid-cols-1 gap-2 max-h-[40vh] overflow-y-auto pr-2">
+                                        {savedImages.map(img => (
+                                            <button key={img.filename} 
+                                                onClick={() => {
+                                                    loadSavedImage(img.filename, img.url);
+                                                    setDesignWizardStep(3);
+                                                }}
+                                                className="w-full flex items-center gap-3 p-3 rounded-xl border transition-all bg-black/40 border-gray-800 hover:border-miami-cyan"
                                             >
-                                                <svg width="18" height="18" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                    <circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.2"/>
-                                                    <circle cx="8" cy="8" r="2.5" stroke="currentColor" strokeWidth="1.2"/>
-                                                    <line x1="8" y1="1" x2="8" y2="3.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-                                                    <line x1="8" y1="12.5" x2="8" y2="15" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-                                                    <line x1="1" y1="8" x2="3.5" y2="8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-                                                    <line x1="12.5" y1="8" x2="15" y2="8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-                                                </svg>
-                                                Place with Lens
+                                                <div className="w-10 h-10 rounded-lg bg-gray-900 flex items-center justify-center overflow-hidden">
+                                                    <img src={img.url} alt={img.filename} className="w-full h-full object-cover opacity-80" />
+                                                </div>
+                                                <div className="flex flex-col min-w-0 flex-1 text-left">
+                                                    <span className="text-xs text-white font-bold truncate">{img.filename}</span>
+                                                </div>
                                             </button>
-                                        )}
+                                        ))}
                                     </div>
-                                </div>
-                                );
-                            })()}
-                        </div>
-
-                        {/* Footer */}
-                        {(designWizardMode !== 'select' && designWizardMode !== 'manage') && (
-                            <div className="p-6 border-t border-gray-800 bg-black/40 flex gap-3">
-                                <button 
-                                    onClick={() => {
-                                        if (designWizardMode === 'placement') setDesignWizardMode('manage');
-                                        else if (designWizardMode === 'saved' || designWizardMode === 'new') setDesignWizardMode('select');
-                                    }} 
-                                    className="px-6 py-4 bg-gray-900 text-white font-black rounded-2xl border border-gray-700 active:scale-95 transition-all"
-                                >
-                                    Back
-                                </button>
-                                {designWizardMode === 'placement' && (
-                                    <button 
-                                        onClick={() => setDesignWizardOpen(false)}
-                                        className="flex-1 py-4 bg-miami-cyan text-black font-black rounded-2xl shadow-[0_0_15px_rgba(0,240,255,0.2)] active:scale-95 transition-all"
-                                    >
-                                        Done
-                                    </button>
                                 )}
+                            </div>
+                        ) : (
+                            <div className="space-y-6">
+                                <div className="bg-black/40 border border-gray-800 rounded-2xl p-6 text-center">
+                                    <div className="text-4xl mb-4">📁</div>
+                                    <p className="text-sm text-gray-400 mb-6 font-bold">Select an SVG, PNG, JPG, BMP, or WebP</p>
+                                    
+                                    <div className="flex justify-center mb-6">
+                                        <ToggleSwitch
+                                            label="Save copy to engraver"
+                                            checked={saveToEngraver}
+                                            onChange={(checked) => setSaveToEngraver(checked)}
+                                        />
+                                    </div>
+
+                                    <ActionButton variant="primary" onClick={() => fileInputRef.current?.click()} className="w-full">
+                                        Choose File
+                                    </ActionButton>
+                                </div>
                             </div>
                         )}
-                    </div>
-                </div>
-            )}
+                    </WizardStep>
+                )}
 
-            {/* ── OPERATION WIZARD MODAL ── */}
-            {wizardOpen && (
-                <div className="fixed inset-0 z-[300] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-                    <div className="w-full max-w-lg bg-[#0c0c14] border-t sm:border border-gray-800 rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in slide-in-from-bottom duration-300">
-                        {/* Header */}
-                        <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between bg-black/40">
-                            <div>
-                                <h3 className="text-miami-cyan font-black text-sm uppercase tracking-widest">
-                                    {wizardStep === 0 ? 'Manage Operation' : editingOpId ? 'Edit Operation' : 'New Operation'}
-                                </h3>
-                                {wizardStep > 0 && (
-                                    <div className="flex gap-1 mt-1">
-                                        {[1, 2, 3].map(s => (
-                                            <div key={s} className={`h-1 w-8 rounded-full transition-colors ${wizardStep >= s ? 'bg-miami-cyan' : 'bg-gray-800'}`} />
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                            <button onClick={() => setWizardOpen(false)} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-900 text-gray-500 hover:text-white transition-colors">✕</button>
-                        </div>
+                {designWizardStep === 3 && (() => {
+                    const isSvg = fileKind === 'svg';
+                    const defaultAppDpi = isSvg ? svgDpi : bitmapDpi;
+                    const commonDpis = isSvg ? [72, 90, 96] : [254, 318, 508];
+                    if (!commonDpis.includes(defaultAppDpi)) commonDpis.push(defaultAppDpi);
+                    commonDpis.sort((a,b) => a-b);
 
-                        {/* Step Content */}
-                        <div className="flex-1 overflow-y-auto p-6">
-                            
-                            {/* STEP 0: MANAGE OPERATION (Editing Only) */}
-                            {wizardStep === 0 && (
-                                <div className="space-y-4">
-                                    <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest mb-4">Manage Operation</p>
-                                    <div className="grid grid-cols-1 gap-3">
-                                        <button 
-                                            onClick={() => setWizardStep(1)}
-                                            className="p-4 rounded-2xl border-2 text-left transition-all flex items-center gap-4 bg-black/40 border-gray-800 hover:border-miami-cyan"
-                                        >
-                                            <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl bg-miami-cyan/20 text-miami-cyan">
-                                                🔄
-                                            </div>
-                                            <div>
-                                                <span className="block font-black text-white capitalize">Change Operation Type</span>
-                                                <span className="block text-[10px] text-gray-500 mt-0.5">
-                                                    Start over and select a new type
-                                                </span>
-                                            </div>
-                                        </button>
-
-                                        {fileKind === 'svg' && (
-                                            <button 
-                                                onClick={() => setWizardStep(2)}
-                                                className="p-4 rounded-2xl border-2 text-left transition-all flex items-center gap-4 bg-black/40 border-gray-800 hover:border-miami-purple"
-                                            >
-                                                <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl bg-miami-purple/20 text-miami-purple">
-                                                    📐
-                                                </div>
-                                                <div>
-                                                    <span className="block font-black text-white capitalize">Change Paths</span>
-                                                    <span className="block text-[10px] text-gray-500 mt-0.5">
-                                                        Select different paths for this operation
-                                                    </span>
-                                                </div>
-                                            </button>
-                                        )}
-
-                                        <button 
-                                            onClick={() => setWizardStep(3)}
-                                            className="p-4 rounded-2xl border-2 text-left transition-all flex items-center gap-4 bg-black/40 border-gray-800 hover:border-miami-pink"
-                                        >
-                                            <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl bg-miami-pink/20 text-miami-pink">
-                                                ⚙️
-                                            </div>
-                                            <div>
-                                                <span className="block font-black text-white capitalize">Change Operation Options</span>
-                                                <span className="block text-[10px] text-gray-500 mt-0.5">
-                                                    Adjust power, speed, passes, etc.
-                                                </span>
-                                            </div>
-                                        </button>
-
-                                        <button 
-                                            onClick={() => { removeOperation(editingOpId!); setWizardOpen(false); }}
-                                            className="p-4 rounded-2xl border-2 text-left transition-all flex items-center gap-4 bg-black/40 border-gray-800 hover:border-red-500/50"
-                                        >
-                                            <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl bg-red-500/10 text-red-400">
-                                                🗑
-                                            </div>
-                                            <div>
-                                                <span className="block font-black text-red-400 capitalize">Remove Operation</span>
-                                                <span className="block text-[10px] text-gray-500 mt-0.5">
-                                                    Delete this operation
-                                                </span>
-                                            </div>
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* STEP 1: TYPE SELECTION */}
-                            {wizardStep === 1 && (
-                                <div className="space-y-4">
-                                    <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest mb-4">Select Operation Type</p>
-                                    <div className="grid grid-cols-1 gap-3">
-                                        {(fileKind === 'svg' ? (['cut', 'fill'] as LayerOp[]) : (['raster'] as LayerOp[])).map(type => (
-                                            <button 
-                                                key={type}
-                                                onClick={() => { setDraftOp({ ...draftOp, opType: type }); setWizardStep(type === 'raster' ? 3 : 2); }}
-                                                className={`p-4 rounded-2xl border-2 text-left transition-all flex items-center gap-4 ${
-                                                    draftOp.opType === type 
-                                                        ? 'bg-miami-cyan/10 border-miami-cyan shadow-[0_0_15px_rgba(0,240,255,0.1)]' 
-                                                        : 'bg-black/40 border-gray-800 hover:border-gray-600'
-                                                }`}
-                                            >
-                                                <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl ${
-                                                    type === 'cut' ? 'bg-miami-pink/20 text-miami-pink' : 
-                                                    type === 'fill' ? 'bg-miami-purple/20 text-miami-purple' : 
-                                                    'bg-miami-cyan/20 text-miami-cyan'
-                                                }`}>
-                                                    {type === 'cut' ? '✂' : type === 'fill' ? '▧' : '🖼️'}
-                                                </div>
-                                                <div>
-                                                    <span className="block font-black text-white capitalize">{type}</span>
-                                                    <span className="block text-[10px] text-gray-500 mt-0.5">
-                                                        {type === 'cut' ? 'Trace paths with laser' : 
-                                                         type === 'fill' ? 'Fill enclosed areas with hatch' : 
-                                                         'Engrave bitmap image'}
-                                                    </span>
-                                                </div>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* STEP 2: SOURCE SELECTION (SVG Only) */}
-                            {wizardStep === 2 && (
-                                <div className="space-y-4">
-                                    <div className="flex items-center justify-between mb-4">
-                                        <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">Select Paths ({draftOp.pathIds?.length || 0})</p>
-                                        <div className="flex gap-2">
-                                            <button onClick={() => setDraftOp({ ...draftOp, pathIds: svgPaths.map(p => p.id) })} className="text-[9px] text-miami-cyan font-bold uppercase">All</button>
-                                            <button onClick={() => setDraftOp({ ...draftOp, pathIds: [] })} className="text-[9px] text-gray-600 font-bold uppercase">None</button>
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-1 gap-2 max-h-[40vh] overflow-y-auto pr-2">
-                                        {svgPaths.map(path => {
-                                            const isSelected = draftOp.pathIds?.includes(path.id);
-                                            return (
-                                                <button key={path.id} 
-                                                    onClick={() => {
-                                                        const ids = draftOp.pathIds || [];
-                                                        setDraftOp({ ...draftOp, pathIds: isSelected ? ids.filter(x => x !== path.id) : [...ids, path.id] });
-                                                    }}
-                                                    className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-all ${
-                                                        isSelected ? 'bg-miami-cyan/10 border-miami-cyan/50' : 'bg-black/20 border-gray-800'
-                                                    }`}
-                                                >
-                                                    <div className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center ${isSelected ? 'bg-miami-cyan border-miami-cyan text-black' : 'border-gray-700'}`}>
-                                                        {isSelected && <span className="text-[10px]">✓</span>}
-                                                    </div>
-                                                    <div className="flex flex-col min-w-0">
-                                                        <span className="text-xs text-white font-bold truncate">{path.label}</span>
-                                                        <div className="flex gap-1 mt-1">
-                                                            {path.strokeColor && <div className="w-2 h-2 rounded-full" style={{ background: path.strokeColor }} />}
-                                                            {path.fillColor && <div className="w-2 h-2 rounded-full border border-white/20" style={{ background: path.fillColor }} />}
-                                                        </div>
-                                                    </div>
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* STEP 3: SETTINGS */}
-                            {wizardStep === 3 && (
-                                <div className="space-y-6">
-                                    <div className="bg-black/40 border border-gray-800 rounded-2xl p-4 space-y-4">
-                                        <div className="flex items-center justify-between">
-                                            <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">Laser Settings</p>
-                                            <select 
-                                                value={''} 
-                                                onChange={e => {
-                                                    const p = presets.find(x => x.id === e.target.value);
-                                                    if (p && draftOp.params) {
-                                                        setDraftOp({ ...draftOp, params: { ...draftOp.params, power: p.power, rate: p.rate, passes: p.passes, airAssist: p.airAssist, lineDistance: p.lineDistance } });
-                                                    }
-                                                }}
-                                                className="bg-black border border-gray-700 rounded-lg px-2 py-1 text-[10px] text-gray-400 outline-none"
-                                            >
-                                                <option value="">Apply Preset…</option>
-                                                {filteredPresets.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                                            </select>
-                                        </div>
-
-                                        {/* Power */}
-                                        <div>
-                                            <div className="flex justify-between mb-2">
-                                                <label className="text-[10px] text-gray-400 uppercase font-bold">Power</label>
-                                                <span className="text-xs font-black text-miami-pink font-mono">{sPct(draftOp.params?.power || 0)}</span>
-                                            </div>
-                                            <input type="range" min={0} max={maxSpindleS} value={draftOp.params?.power || 0}
-                                                onChange={e => setDraftOp({ ...draftOp, params: { ...draftOp.params!, power: Number(e.target.value) } })}
-                                                className="w-full accent-miami-pink" />
-                                        </div>
-
-                                        {/* Min Power for Raster */}
-                                        {draftOp.opType === 'raster' && (
-                                            <div>
-                                                <div className="flex justify-between mb-2">
-                                                    <label className="text-[10px] text-gray-400 uppercase font-bold">Min Power (Shadows)</label>
-                                                    <span className="text-xs font-black text-miami-purple font-mono">{sPct(draftOp.params?.minPower || 0)}</span>
-                                                </div>
-                                                <input type="range" min={0} max={maxSpindleS} value={draftOp.params?.minPower || 0}
-                                                    onChange={e => setDraftOp({ ...draftOp, params: { ...draftOp.params!, minPower: Number(e.target.value) } })}
-                                                    className="w-full accent-miami-purple" />
-                                            </div>
-                                        )}
-
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div>
-                                                <label className="block text-[10px] text-gray-400 mb-2 uppercase font-bold">Feed ({displayRateUnit})</label>
-                                                <NumericInput 
-                                                    value={toDisplay(draftOp.params?.rate || 1500)}
-                                                    onChange={val => setDraftOp({ ...draftOp, params: { ...draftOp.params!, rate: toMmPerMin(val) } })}
-                                                    className="w-full bg-black border border-gray-700 rounded-xl p-3 text-white text-sm font-mono"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-[10px] text-gray-400 mb-2 uppercase font-bold">Passes</label>
-                                                <NumericInput 
-                                                    value={draftOp.params?.passes || 1}
-                                                    onChange={val => setDraftOp({ ...draftOp, params: { ...draftOp.params!, passes: val } })}
-                                                    className="w-full bg-black border border-gray-700 rounded-xl p-3 text-white text-sm font-mono"
-                                                />
-                                            </div>
-                                        </div>
-
-                                        {(draftOp.opType === 'fill' || draftOp.opType === 'raster') && (
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <div>
-                                                    <label className="block text-[10px] text-gray-400 mb-2 uppercase font-bold">Line Dist (mm)</label>
-                                                    <NumericInput 
-                                                        value={draftOp.params?.lineDistance || 0.1}
-                                                        onChange={val => setDraftOp({ ...draftOp, params: { ...draftOp.params!, lineDistance: val } })}
-                                                        className="w-full bg-black border border-gray-700 rounded-xl p-3 text-white text-sm font-mono"
-                                                    />
-                                                </div>
-                                                {draftOp.opType === 'raster' && (
-                                                    <div>
-                                                        <label className="block text-[10px] text-gray-400 mb-2 uppercase font-bold">Margin (mm)</label>
-                                                        <NumericInput 
-                                                            value={draftOp.params?.margin || 0}
-                                                            onChange={val => setDraftOp({ ...draftOp, params: { ...draftOp.params!, margin: val } })}
-                                                            className="w-full bg-black border border-gray-700 rounded-xl p-3 text-white text-sm font-mono"
-                                                        />
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-
-                                        <button 
-                                            onClick={() => setDraftOp({ ...draftOp, params: { ...draftOp.params!, airAssist: !draftOp.params?.airAssist } })}
-                                            className={`w-full py-3 rounded-xl text-xs font-black border transition-all ${draftOp.params?.airAssist ? 'bg-miami-cyan text-black border-miami-cyan' : 'bg-black text-gray-500 border-gray-700'}`}
-                                        >
-                                            {draftOp.params?.airAssist ? '💨 Air Assist ON' : '— Air Assist OFF'}
-                                        </button>
-                                    </div>
-                                    
+                    return (
+                        <WizardStep title="Placement & DPI" instructions="Configure the size, position, and resolution of your design.">
+                            <div className="bg-black/40 border border-gray-800 rounded-2xl p-6">
+                                <div className="grid grid-cols-3 gap-4 mb-6">
                                     <div>
-                                        <label className="block text-[10px] text-gray-500 mb-2 uppercase font-bold tracking-widest">Op Name</label>
-                                        <input 
-                                            value={draftOp.name || ''}
-                                            onChange={e => setDraftOp({ ...draftOp, name: e.target.value })}
-                                            placeholder={`Op ${operations.length + 1}`}
-                                            className="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm font-bold outline-none focus:border-miami-cyan transition-colors"
+                                        <label className="block text-[10px] text-gray-400 mb-2 uppercase font-bold">X (mm)</label>
+                                        <NumericInput 
+                                            value={posX}
+                                            onChange={val => { setPlacement({ posX: val }); bumpRender(); }}
+                                            className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-xl p-3 text-white text-sm font-mono outline-none transition-colors"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] text-gray-400 mb-2 uppercase font-bold">Y (mm)</label>
+                                        <NumericInput 
+                                            value={posY}
+                                            onChange={val => { setPlacement({ posY: val }); bumpRender(); }}
+                                            className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-xl p-3 text-white text-sm font-mono outline-none transition-colors"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] text-gray-400 mb-2 uppercase font-bold">Scale %</label>
+                                        <NumericInput 
+                                            value={scalePct}
+                                            onChange={val => { setPlacement({ scalePct: val }); bumpRender(); }}
+                                            min={1} max={5000}
+                                            className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-xl p-3 text-white text-sm font-mono outline-none transition-colors"
                                         />
                                     </div>
                                 </div>
-                            )}
-                        </div>
 
-                        {/* Footer */}
-                        <div className="p-6 border-t border-gray-800 bg-black/40 flex gap-3">
-                            {wizardStep > 1 && (
-                                <button onClick={() => setWizardStep(v => v - 1)} className="px-6 py-4 bg-gray-900 text-white font-black rounded-2xl border border-gray-700 active:scale-95 transition-all">Back</button>
-                            )}
-                            {wizardStep < 3 && draftOp.opType !== 'raster' ? (
-                                <button 
-                                    onClick={() => setWizardStep(v => v + 1)} 
-                                    disabled={wizardStep === 2 && (!draftOp.pathIds || draftOp.pathIds.length === 0)}
-                                    className="flex-1 py-4 bg-miami-cyan text-black font-black rounded-2xl shadow-[0_0_15px_rgba(0,240,255,0.2)] disabled:opacity-30 active:scale-95 transition-all"
+                                <div className="mb-6">
+                                    <label className="block text-[10px] text-gray-400 mb-2 uppercase font-bold">
+                                        {isSvg ? 'SVG DPI' : 'Bitmap DPI'}
+                                    </label>
+                                    <div className="flex flex-wrap gap-2 mb-3">
+                                        <RadioGroup
+                                            options={[
+                                                ...(isSvg ? [72, 96, 150, 300] : [72, 96, 150, 300, 600]).map(v => ({ value: v, label: v })),
+                                                { value: 'custom', label: 'Custom' }
+                                            ]}
+                                            value={showCustomDpi ? 'custom' : dpi}
+                                            onChange={(val) => {
+                                                if (val === 'custom') {
+                                                    setShowCustomDpi(true);
+                                                } else {
+                                                    setShowCustomDpi(false);
+                                                    setDpi(val as number);
+                                                    bumpRender();
+                                                }
+                                            }}
+                                            accentColor="cyan"
+                                        />
+                                    </div>
+                                    {showCustomDpi && (
+                                        <NumericInput 
+                                            value={dpi}
+                                            onChange={val => { setDpi(val); bumpRender(); }}
+                                            min={10} max={2000}
+                                            className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-xl p-3 text-white text-sm font-mono outline-none transition-colors"
+                                        />
+                                    )}
+                                </div>
+                            </div>
+                        </WizardStep>
+                    );
+                })()}
+            </Wizard>
+            
+            {/* ── OPERATION WIZARD ── */}
+            <Wizard
+                isOpen={wizardOpen}
+                onClose={() => setWizardOpen(false)}
+                title={editingOpId ? 'Edit Operation' : 'New Operation'}
+                currentStep={wizardStep}
+                totalSteps={fileKind === 'bitmap' ? 2 : 3}
+                onNext={() => {
+                    setWizardStep(s => s + 1);
+                }}
+                onBack={() => setWizardStep(s => s - 1)}
+                onSave={saveWizard}
+                saveText={editingOpId ? 'Save Changes' : 'Add Operation'}
+                nextDisabled={
+                    (wizardStep === 1 && !draftOp.name) ||
+                    (wizardStep === 3 && draftOp.pathIds?.length === 0)
+                }
+            >
+                {/* Step 1: Operation Settings */}
+                {wizardStep === 1 && (
+                    <WizardStep title="Operation Type" instructions="Name your operation and select the operation type.">
+                        <div className="space-y-6">
+                            <div>
+                                <label className="block text-[10px] text-gray-500 mb-2 uppercase font-bold tracking-widest">Operation Name</label>
+                                <input 
+                                    value={draftOp.name || ''}
+                                    onChange={e => setDraftOp({ ...draftOp, name: e.target.value })}
+                                    placeholder={`Op ${operations.length + 1}`}
+                                    className="w-full bg-black border border-gray-800 rounded-xl p-3 text-white text-sm font-bold outline-none focus:border-miami-cyan transition-colors"
+                                />
+                            </div>
+                            
+                            <div>
+                                <label className="block text-[10px] text-gray-500 mb-2 uppercase font-bold tracking-widest">Type</label>
+                                <RadioGroup
+                                    options={fileKind === 'svg' ? [
+                                        { value: 'cut', label: 'Cut (Trace paths)' },
+                                        { value: 'fill', label: 'Fill (Hatch enclosed areas)' }
+                                    ] : [
+                                        { value: 'raster', label: 'Raster (Engrave image)' }
+                                    ]}
+                                    value={draftOp.opType || (fileKind === 'svg' ? 'cut' : 'raster')}
+                                    onChange={(v) => setDraftOp({ ...draftOp, opType: v as LayerOp })}
+                                />
+                            </div>
+                        </div>
+                    </WizardStep>
+                )}
+
+                {/* Step 2: Laser Settings */}
+                {wizardStep === 2 && (
+                    <WizardStep title="Laser Settings" instructions="Configure power, speed, and other laser parameters.">
+                        <div className="bg-black/40 border border-gray-800 rounded-2xl p-4 space-y-4">
+                            <div className="flex items-center justify-between">
+                                <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">Preset</p>
+                                <select 
+                                    value={''} 
+                                    onChange={e => {
+                                        const p = presets.find(x => x.id === e.target.value);
+                                        if (p && draftOp.params) {
+                                            setDraftOp({ ...draftOp, params: { ...draftOp.params, power: p.power, rate: p.rate, passes: p.passes, airAssist: p.airAssist, lineDistance: p.lineDistance } });
+                                        }
+                                    }}
+                                    className="bg-black border border-gray-700 rounded-lg px-2 py-1 text-[10px] text-gray-400 outline-none"
                                 >
-                                    Next Step
-                                </button>
-                            ) : (
-                                <button onClick={saveWizard} className="flex-1 py-4 bg-gradient-to-r from-miami-pink to-miami-purple text-white font-black rounded-2xl shadow-[0_0_15px_rgba(255,0,127,0.3)] active:scale-95 transition-all">
-                                    {editingOpId ? 'Save Changes' : 'Add Operation'}
-                                </button>
+                                    <option value="">Apply Preset…</option>
+                                    {filteredPresets.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                </select>
+                            </div>
+
+                            {/* Power */}
+                            <div>
+                                <label className="block text-[10px] text-gray-400 mb-2 uppercase font-bold">Power (%)</label>
+                                <NumericInput 
+                                    min={0} max={100}
+                                    value={Math.round(((draftOp.params?.power || 0) / maxSpindleS) * 100)}
+                                    onChange={val => setDraftOp({ ...draftOp, params: { ...draftOp.params!, power: Math.round((val / 100) * maxSpindleS) } })}
+                                    className="w-full bg-black border border-gray-700 focus:border-miami-pink rounded-xl p-3 text-white text-sm font-mono transition-colors"
+                                />
+                            </div>
+
+                            {/* Min Power for Raster */}
+                            {draftOp.opType === 'raster' && (
+                                <div>
+                                    <label className="block text-[10px] text-gray-400 mb-2 uppercase font-bold">Min Power (%) (Shadows)</label>
+                                    <NumericInput 
+                                        min={0} max={100}
+                                        value={Math.round(((draftOp.params?.minPower || 0) / maxSpindleS) * 100)}
+                                        onChange={val => setDraftOp({ ...draftOp, params: { ...draftOp.params!, minPower: Math.round((val / 100) * maxSpindleS) } })}
+                                        className="w-full bg-black border border-gray-700 focus:border-miami-purple rounded-xl p-3 text-white text-sm font-mono transition-colors"
+                                    />
+                                </div>
                             )}
-                        </div>
-                    </div>
-                </div>
-            )}
 
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-[10px] text-gray-400 mb-2 uppercase font-bold">Feed ({displayRateUnit})</label>
+                                    <NumericInput 
+                                        value={toDisplay(draftOp.params?.rate || 1500)}
+                                        onChange={val => setDraftOp({ ...draftOp, params: { ...draftOp.params!, rate: toMmPerMin(val) } })}
+                                        className="w-full bg-black border border-gray-700 rounded-xl p-3 text-white text-sm font-mono"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] text-gray-400 mb-2 uppercase font-bold">Passes</label>
+                                    <NumericInput 
+                                        value={draftOp.params?.passes || 1}
+                                        onChange={val => setDraftOp({ ...draftOp, params: { ...draftOp.params!, passes: val } })}
+                                        className="w-full bg-black border border-gray-700 rounded-xl p-3 text-white text-sm font-mono"
+                                    />
+                                </div>
+                            </div>
+
+                            {(draftOp.opType === 'fill' || draftOp.opType === 'raster') && (
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-[10px] text-gray-400 mb-2 uppercase font-bold">Line Dist (mm)</label>
+                                        <NumericInput 
+                                            value={draftOp.params?.lineDistance || 0.1}
+                                            onChange={val => setDraftOp({ ...draftOp, params: { ...draftOp.params!, lineDistance: val } })}
+                                            className="w-full bg-black border border-gray-700 rounded-xl p-3 text-white text-sm font-mono"
+                                        />
+                                    </div>
+                                    {draftOp.opType === 'raster' && (
+                                        <div>
+                                            <label className="block text-[10px] text-gray-400 mb-2 uppercase font-bold">Margin (mm)</label>
+                                            <NumericInput 
+                                                value={draftOp.params?.margin || 0}
+                                                onChange={val => setDraftOp({ ...draftOp, params: { ...draftOp.params!, margin: val } })}
+                                                className="w-full bg-black border border-gray-700 rounded-xl p-3 text-white text-sm font-mono"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            <div className="flex justify-center mt-2">
+                                <ToggleSwitch
+                                    label="Air Assist"
+                                    checked={!!draftOp.params?.airAssist}
+                                    onChange={(checked) => setDraftOp({ ...draftOp, params: { ...draftOp.params!, airAssist: checked } })}
+                                />
+                            </div>
+                        </div>
+                    </WizardStep>
+                )}
+
+                {/* Step 3: Assignment (SVG Only) */}
+                {wizardStep === 3 && fileKind === 'svg' && (
+                    <WizardStep title="Assignment" instructions="Select the paths you want to apply this operation to.">
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between mb-4">
+                                <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">Paths ({draftOp.pathIds?.length || 0})</p>
+                                <div className="flex gap-2">
+                                    <button onClick={() => setDraftOp({ ...draftOp, pathIds: svgPaths.map(p => p.id) })} className="text-[9px] text-miami-cyan font-bold uppercase">All</button>
+                                    <button onClick={() => setDraftOp({ ...draftOp, pathIds: [] })} className="text-[9px] text-gray-600 font-bold uppercase">None</button>
+                                </div>
+                            </div>
+                            
+                            <div className="max-h-[40vh] overflow-y-auto">
+                                <ItemContainer>
+                                    {svgPaths.map(path => {
+                                        const isSelected = draftOp.pathIds?.includes(path.id);
+                                        return (
+                                            <ItemBadge
+                                                key={path.id}
+                                                title={path.label}
+                                                icon={
+                                                    <div className="flex gap-1 items-center justify-center h-full">
+                                                        {path.strokeColor && <div className="w-2 h-2 rounded-full" style={{ background: path.strokeColor }} />}
+                                                        {path.fillColor && <div className="w-2 h-2 rounded-full border border-white/20" style={{ background: path.fillColor }} />}
+                                                        {!path.strokeColor && !path.fillColor && <span className="text-xs">📐</span>}
+                                                    </div>
+                                                }
+                                                onClick={() => {
+                                                    const ids = draftOp.pathIds || [];
+                                                    setDraftOp({ ...draftOp, pathIds: isSelected ? ids.filter(x => x !== path.id) : [...ids, path.id] });
+                                                }}
+                                                selected={isSelected}
+                                                multiSelect={true}
+                                            />
+                                        );
+                                    })}
+                                </ItemContainer>
+                            </div>
+                        </div>
+                    </WizardStep>
+                )}
+            </Wizard>
+            
             {/* ── Header + Tab Bar ── */}
-            <div className="px-4 pt-3 pb-2 flex-shrink-0">
-                <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-3">
-                        <div>
-                            <h2 className="text-xl font-black text-miami-pink tracking-tight">Design Studio</h2>
-                            <p className="text-[10px] text-gray-500 font-mono mt-0.5">⊕ BL origin · {mmW}×{mmH} mm</p>
-                        </div>
-                        {(viewZoom !== 1 || viewOffsetX !== 0 || viewOffsetY !== 0) && (
-                            <button onClick={resetView} className="px-2 py-1 rounded bg-miami-pink/10 border border-miami-pink/30 text-[9px] font-black text-miami-pink hover:bg-miami-pink/20 transition-all uppercase tracking-tighter">
-                                ↺ Reset View
-                            </button>
-                        )}
-                    </div>
-                    {fileKind && (
-                        <button onClick={clearDesign} className="text-[10px] text-gray-600 hover:text-red-400 border border-gray-800 hover:border-red-900 rounded-lg px-2.5 py-1.5 font-bold transition-colors">
-                            ✕ Clear
-                        </button>
-                    )}
-                </div>
-
-                {/* Tabs */}
-                <div className="flex gap-1 bg-black/40 rounded-xl p-1 border border-gray-800">
-                    {(['design', 'gcode'] as StudioTab[]).map(tab => (
-                        <button
-                            key={tab}
-                            onClick={() => setActiveTab(tab)}
-                            disabled={tab === 'gcode' && !gcodeText}
-                            className={`flex-1 py-1.5 rounded-lg text-xs font-black transition-all capitalize ${
-                                activeTab === tab
-                                    ? tab === 'gcode'
-                                        ? 'bg-miami-cyan text-black'
-                                        : 'bg-miami-pink text-black'
-                                    : 'text-gray-500 hover:text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed'
-                            }`}
-                        >
-                            {tab === 'gcode' ? `⚡ GCode${gcodeText ? ' ✓' : ''}` : '🎨 Design'}
-                        </button>
-                    ))}
-                </div>
+            <div className="p-4 space-y-4">
+                <TabControl
+                    tabs={[
+                        { id: 'design', label: 'Design' },
+                        { id: 'gcode', label: 'GCode Preview', disabled: !gcodeText }
+                    ]}
+                    activeTab={activeTab}
+                    onChange={(id) => setActiveTab(id as StudioTab)}
+                />
             </div>
-
-            {/* ── Canvas ── */}
-            <div className="flex-shrink-0 px-3 pb-2">
-                <div
-                    className={`rounded-xl overflow-hidden border transition-all ${isDragOver ? 'border-miami-pink shadow-[0_0_20px_rgba(255,0,127,0.25)]' : 'border-gray-900'}`}
-                    onDrop={handleDrop}
-                    onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
-                    onDragLeave={() => setIsDragOver(false)}
-                >
-                    <canvas 
-                        ref={canvasRef} 
-                        width={CW} 
-                        height={CH} 
-                        className="w-full block cursor-crosshair touch-none"
-                        onWheel={handleWheel}
-                        onPointerDown={handlePointerDown}
-                        onPointerMove={handlePointerMove}
-                        onPointerUp={handlePointerUp}
-                        onPointerCancel={handlePointerUp}
-                        onPointerLeave={handlePointerUp}
-                    />
-                </div>
-            </div>
-
-            <input ref={fileInputRef} type="file" accept=".svg,.png,.jpg,.jpeg,.bmp,.webp,.gif" className="hidden" onChange={handleFileChange} />
-
+            
             {/* ── DESIGN TAB ── */}
             {activeTab === 'design' && (
-                <div className="flex-1 overflow-y-auto px-3 space-y-3 pb-10">
-
-                    {/* Import / file badge */}
-                    {!fileKind ? (
-                        <button onClick={openDesignWizard}
-                            className="w-full py-4 bg-miami-pink/10 border border-miami-pink/30 text-miami-pink font-black rounded-xl hover:border-miami-pink hover:bg-miami-pink/20 hover:shadow-[0_0_15px_rgba(255,0,127,0.15)] transition-all text-sm select-none active:scale-[0.98]">
-                            🎨 Load Design
-                        </button>
-                    ) : (
-                        <div className="bg-black/40 border border-gray-800 rounded-xl p-3">
-                            <div className="flex items-center justify-between mb-3">
-                                <p className="text-[10px] uppercase text-gray-400 font-bold tracking-widest">Images (1)</p>
-                            </div>
-                            <div className="flex gap-2 items-center">
-                                <div className="flex-1 min-w-0 bg-black/60 border border-gray-800 rounded-xl px-3 py-2 flex items-center gap-2">
-                                    {designImgRef.current ? (
-                                        <div className="w-6 h-6 rounded bg-white overflow-hidden flex-shrink-0 flex items-center justify-center">
-                                            <img src={designImgRef.current.src} className="w-full h-full object-contain" />
-                                        </div>
-                                    ) : (
-                                        <span>{fileKind === 'svg' ? '📐' : '🖼️'}</span>
-                                    )}
-                                    <span className="text-xs text-gray-300 truncate font-mono flex-1">{fileName}</span>
-                                    <span className={`ml-auto flex-shrink-0 text-[9px] px-2 py-0.5 rounded font-black uppercase ${fileKind === 'svg' ? 'bg-miami-pink/20 text-miami-pink' : 'bg-miami-cyan/20 text-miami-cyan'}`}>
-                                        {fileKind.toUpperCase()}
-                                    </span>
-                                </div>
-                                <button 
-                                    onClick={openDesignWizard} 
-                                    title="Edit Design"
-                                    className="flex-shrink-0 w-20 py-2 bg-miami-cyan/10 border border-miami-cyan/40 text-miami-cyan hover:bg-miami-cyan/20 rounded-xl text-xs font-black transition-all shadow-[0_0_10px_rgba(0,240,255,0)] hover:shadow-[0_0_10px_rgba(0,240,255,0.08)] flex items-center justify-center"
-                                >
-                                    Edit
-                                </button>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* ── JOB OPERATIONS ── */}
-                    {fileKind && (
-                        <div className="bg-black/40 border border-gray-800 rounded-xl p-3">
-                            <div className="flex items-center justify-between mb-3">
-                                <p className="text-[10px] uppercase text-gray-400 font-bold tracking-widest">Job Operations ({operations.length})</p>
-                                <button 
-                                    onClick={() => openWizard()}
-                                    className="px-3 py-1.5 bg-miami-cyan/10 border border-miami-cyan/40 text-miami-cyan hover:bg-miami-cyan/20 rounded-lg text-[10px] font-black transition-all"
-                                >
-                                    + Add Operation
-                                </button>
-                            </div>
-
-                            {operations.length === 0 ? (
-                                <div className="text-center py-8 border-2 border-dashed border-gray-800 rounded-xl">
-                                    <p className="text-xs text-gray-600 font-bold">No operations added yet</p>
-                                    <button onClick={() => openWizard()} className="mt-2 text-[10px] text-miami-cyan font-black uppercase">Create First Op</button>
-                                </div>
+                <div className="space-y-6">
+                    <SectionCard title="Workspace View">
+                        <div ref={containerRef} className="w-full">
+                        <WorkspaceGrid 
+                            width={Math.max(10, gridWidth - 20)} 
+                            height={CH}
+                            machineWidthMm={mmW} 
+                            machineHeightMm={mmH}
+                            majorSpacingMm={major} 
+                            minorSpacingMm={minor}
+                            enablePanZoom={true}
+                            renderOverlay={(ctx, t) => {
+                                if (designImgRef.current && fileKind) {
+                                    ctx.save();
+                                    const dim = physSize();
+                                    const px = posX * t.baseScale;
+                                    const py = -posY * t.baseScale;
+                                    const pw = dim.w * t.baseScale;
+                                    const ph = dim.h * t.baseScale;
+                                    ctx.translate(px, py - ph);
+                                    if (rotation) {
+                                        ctx.translate(pw/2, ph/2);
+                                        ctx.rotate(rotation * Math.PI / 180);
+                                        ctx.translate(-pw/2, -ph/2);
+                                    }
+                                    if (fileKind === 'bitmap') {
+                                        ctx.fillStyle = '#ffffff';
+                                        ctx.fillRect(0, 0, pw, ph);
+                                    }
+                                    ctx.globalAlpha = fileKind === 'bitmap' ? 0.8 : 0.9;
+                                    ctx.drawImage(designImgRef.current, 0, 0, pw, ph);
+                                    
+                                    if (fileKind === 'svg') {
+                                        ctx.strokeStyle = '#ff007f';
+                                        ctx.strokeRect(0, 0, pw, ph);
+                                    }
+                                    ctx.restore();
+                                }
+                            }}
+                        />
+                        <div className="mt-4">
+                            {!fileKind ? (
+                                <ActionButton variant="primary" onClick={openDesignWizard} className="w-full">
+                                    Load Design
+                                </ActionButton>
                             ) : (
-                                <div className="space-y-2">
-                                    {operations.map((op, idx) => {
-                                        let opTitle = op.name;
-                                        let iconColorStyle = {};
-                                        let iconClasses = "w-6 h-6 rounded flex items-center justify-center text-sm flex-shrink-0";
-                                        
-                                        if (op.opType === 'raster') {
-                                            iconClasses += ' bg-miami-cyan/20 text-miami-cyan';
-                                            opTitle = `Bitmap`;
-                                        } else if (op.pathIds && op.pathIds.length > 0) {
-                                            const firstPath = svgPaths.find(p => p.id === op.pathIds[0]);
-                                            if (firstPath) {
-                                                const pathName = firstPath.label || firstPath.id;
-                                                const extra = op.pathIds.length > 1 ? ` + ${op.pathIds.length - 1} more` : '';
-                                                opTitle = `${pathName}${extra}`;
-                                                
-                                                let color = op.opType === 'cut' ? firstPath.strokeColor : firstPath.fillColor;
-                                                
-                                                if (color && color !== 'none') {
-                                                    // Handle black colors in dark theme by using a slightly lighter gray so it's visible, or keep it black but with white border
-                                                    if (color === '#000000' || color === 'black' || color === '#000' || color === 'rgb(0,0,0)') {
-                                                        iconColorStyle = { backgroundColor: '#000000', border: '1px solid #444' };
-                                                    } else {
-                                                        iconColorStyle = { backgroundColor: color, border: `1px solid ${color}` };
-                                                    }
-                                                } else {
-                                                    // fallback to miami colors solid block
-                                                    iconColorStyle = { backgroundColor: op.opType === 'cut' ? '#ff007f' : '#7000ff' };
-                                                }
-                                                iconClasses = "w-6 h-6 rounded flex items-center justify-center text-sm flex-shrink-0";
-                                            }
-                                        } else {
-                                            iconColorStyle = { backgroundColor: op.opType === 'cut' ? '#ff007f' : '#7000ff' };
-                                            iconClasses = "w-6 h-6 rounded flex items-center justify-center text-sm flex-shrink-0";
-                                        }
-
-                                        return (
-                                        <div key={op.id} className="bg-black/40 border border-gray-800 rounded-xl overflow-hidden group">
-                                            <div className="flex items-center gap-2 p-2">
-                                                <div className="flex-1 min-w-0 bg-black/60 border border-gray-800 rounded-xl px-3 py-2 flex items-center gap-2">
-                                                    <div className={iconClasses} style={iconColorStyle}>
-                                                        {op.opType === 'raster' && '🖼️'}
-                                                    </div>
-                                                    <div className="flex-1 min-w-0 text-left">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="text-[10px] font-black text-gray-600">#{idx + 1}</span>
-                                                            <span className="text-xs font-bold text-white truncate">{opTitle}</span>
-                                                        </div>
-                                                        <p className="text-[9px] text-gray-500 font-mono mt-0.5">
-                                                            {op.opType.toUpperCase()} · {Math.round((op.params.power / 1000) * 100)}% Power · {toDisplay(op.params.rate)} {displayRateUnit}
-                                                        </p>
-                                                    </div>
-                                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-auto">
-                                                        <button onClick={() => moveOp(op.id, 'up')} disabled={idx === 0} className="w-6 h-6 flex items-center justify-center rounded bg-gray-900 text-gray-400 hover:text-white disabled:opacity-20 transition-all">↑</button>
-                                                        <button onClick={() => moveOp(op.id, 'down')} disabled={idx === operations.length - 1} className="w-6 h-6 flex items-center justify-center rounded bg-gray-900 text-gray-400 hover:text-white disabled:opacity-20 transition-all">↓</button>
-                                                    </div>
-                                                </div>
-                                                <button 
-                                                    onClick={() => openWizard(op)}
-                                                    className="flex-shrink-0 w-20 py-2 bg-miami-cyan/10 border border-miami-cyan/40 text-miami-cyan hover:bg-miami-cyan/20 rounded-xl text-xs font-black transition-all shadow-[0_0_10px_rgba(0,240,255,0)] hover:shadow-[0_0_10px_rgba(0,240,255,0.08)] flex items-center justify-center"
-                                                >
-                                                    Edit
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )})}
-                                </div>
+                                <ItemContainer>
+                                    <ItemBadge 
+                                        title={fileName} 
+                                        subtitle={`${fileKind.toUpperCase()} · ${Math.round(physSize().w)}×${Math.round(physSize().h)} mm`}
+                                        icon={<span>{fileKind === 'svg' ? '📐' : '🖼️'}</span>}
+                                        onEdit={openDesignWizard}
+                                        onDelete={clearDesign}
+                                    />
+                                </ItemContainer>
                             )}
                         </div>
-                    )}
+                        </div>
+                    </SectionCard>
 
+                    <SectionCard title="Job Operations">
+                        {fileKind && (
+                            <div className="mb-4">
+                                <ActionButton variant="secondary" onClick={() => openWizard()} className="w-full">
+                                    + Add Operation
+                                </ActionButton>
+                            </div>
+                        )}
+                        {operations.length === 0 && fileKind ? (
+                            <div className="text-center py-8 border-2 border-dashed border-gray-800 rounded-xl">
+                                <p className="text-xs text-gray-600 font-bold">No operations added yet</p>
+                            </div>
+                        ) : operations.length > 0 && (
+                            <ItemContainer>
+                                {operations.map((op, idx) => (
+                                    <ItemBadge 
+                                        key={op.id}
+                                        title={op.name || `Op ${idx + 1}`}
+                                        subtitle={`${op.opType.toUpperCase()} · ${Math.round((op.params.power / 1000) * 100)}% Power · ${toDisplay(op.params.rate)} ${displayRateUnit}`}
+                                        icon={<span>{op.opType === 'raster' ? '🖼️' : '✂️'}</span>}
+                                        onEdit={() => openWizard(op)}
+                                        onDelete={() => removeOperation(op.id)}
+                                    />
+                                ))}
+                            </ItemContainer>
+                        )}
+                    </SectionCard>
 
-
-
-                    {/* Generate GCode */}
                     {fileKind && (
-                        <button onClick={generateGCode} disabled={isGenerating}
-                            className="w-full py-4 bg-gradient-to-r from-miami-pink to-miami-purple text-white font-black rounded-xl shadow-[0_0_20px_rgba(255,0,127,0.25)] hover:shadow-[0_0_28px_rgba(255,0,127,0.5)] active:scale-[0.98] disabled:opacity-60 disabled:cursor-wait transition-all tracking-wider text-sm uppercase">
-                            {isGenerating ? '⏳ Generating…' : '⚡ Generate GCode →'}
-                        </button>
+                        <div className="pb-10">
+                            <ActionButton variant="global" onClick={generateGCode} disabled={isGenerating}>
+                                {isGenerating ? 'Generating...' : 'Generate GCode'}
+                            </ActionButton>
+                        </div>
                     )}
                 </div>
             )}
-
+            
             {/* ── GCODE TAB ── */}
             {activeTab === 'gcode' && gcodeText && (
                 <div className="flex-1 overflow-y-auto px-3 space-y-3 pb-10">
@@ -2328,6 +2027,6 @@ export const StudioModule: React.FC = () => {
                     </div>
                 </div>
             )}
-        </div>
+        </View>
     );
 };

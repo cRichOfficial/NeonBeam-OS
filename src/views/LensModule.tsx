@@ -6,9 +6,10 @@ import { useNavigationStore } from '../store/navigationStore';
 import { NumericInput } from '../components/NumericInput';
 import type { DetectionResult, TransformResponse, CalibrationPoint, LensHealthResponse, LensSessionStatus, LensCalibrationResult } from '../types/lens';
 
+import { WorkspaceGrid } from '../components/workspace/WorkspaceGrid';
+
 // Canvas dimensions (similar to StudioModule)
-const CW = 480, CH = 300, ML = 32, MB = 20;
-const DW = CW - ML, DH = CH - MB;
+const CW = 480, CH = 300;
 
 type LensTab = 'optics' | 'mapping' | 'tags';
 const TAB_LABELS: Record<LensTab, string> = {
@@ -56,11 +57,6 @@ export const LensModule: React.FC = () => {
     const [lensPreviewKey, setLensPreviewKey] = useState(0);
     const [showPreviewFlash, setShowPreviewFlash] = useState(false);
 
-    // ── Canvas Refs ──
-    const canvasRef = useRef<HTMLCanvasElement>(null);
-    const [renderTick, setRenderTick] = useState(0);
-    const bumpRender = useCallback(() => setRenderTick(t => t + 1), []);
-
     // Flash the capture preview for 2s after each successful capture, then revert to stream
     useEffect(() => {
         if (lensPreviewKey === 0) return;
@@ -68,15 +64,6 @@ export const LensModule: React.FC = () => {
         const t = setTimeout(() => setShowPreviewFlash(false), 2000);
         return () => clearTimeout(t);
     }, [lensPreviewKey]);
-
-    // ── Viewport Logic (Simpler than StudioModule as we don't zoom/pan here yet) ──
-    const baseSc = Math.min(DW / mmW, DH / mmH);
-    const scX = baseSc;
-    const scY = baseSc;
-    const plotW = scX * mmW;
-    const plotH = scY * mmH;
-    // Center the plot area horizontally
-    const plotX = ML + (DW - plotW) / 2;
 
     const streamUrl = lensService.getStreamUrl();
 
@@ -99,19 +86,7 @@ export const LensModule: React.FC = () => {
         }
     };
 
-    const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-        const rect = canvasRef.current?.getBoundingClientRect();
-        if (!rect) return;
-        
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
 
-        // Convert canvas pixels to mm
-        const mmX = (x - ML) / baseSc;
-        const mmY = (plotH - (y)) / baseSc;
-
-        // handleCanvasClick placeholder for future tab-specific interactions
-    };
 
     const alignDesign = async () => {
         if (!selectedWorkpieceId || !designSource) return;
@@ -245,116 +220,7 @@ export const LensModule: React.FC = () => {
         });
     };
 
-    // ── Drawing Logic (Enhanced Grid/Axis) ──
-    useEffect(() => {
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
 
-        // 1. Background
-        ctx.fillStyle = '#080808'; ctx.fillRect(0, 0, CW, CH);
-
-        // Bed background
-        ctx.fillStyle = '#111111'; ctx.fillRect(plotX, 0, plotW, plotH);
-        ctx.strokeStyle = 'rgba(0,240,255,0.1)'; ctx.lineWidth = 1;
-        ctx.strokeRect(plotX, 0, plotW, plotH);
-
-        // 2. Grid (Extended)
-        const gMinX = -50, gMaxX = mmW + 50, gMinY = -50, gMaxY = mmH + 50;
-
-        // Minor grid
-        ctx.beginPath(); ctx.strokeStyle = 'rgba(0,240,255,0.03)'; ctx.lineWidth = 0.5;
-        for (let x = Math.floor(gMinX/minor)*minor; x <= gMaxX; x += minor) { const px = plotX + x * scX; ctx.moveTo(px, 0); ctx.lineTo(px, plotH); }
-        for (let y = Math.floor(gMinY/minor)*minor; y <= gMaxY; y += minor) { const py = plotH - y * scY; ctx.moveTo(plotX, py); ctx.lineTo(plotX + plotW, py); }
-        ctx.stroke();
-
-        // Major grid
-        ctx.beginPath(); ctx.strokeStyle = 'rgba(0,240,255,0.08)'; ctx.lineWidth = 1;
-        for (let x = Math.floor(gMinX/major)*major; x <= gMaxX; x += major) { const px = plotX + x * scX; ctx.moveTo(px, 0); ctx.lineTo(px, plotH); }
-        for (let y = Math.floor(gMinY/major)*major; y <= gMaxY; y += major) { const py = plotH - y * scY; ctx.moveTo(plotX, py); ctx.lineTo(plotX + plotW, py); }
-        ctx.stroke();
-
-        // 3. Origin Highlight
-        ctx.beginPath(); ctx.strokeStyle = 'rgba(0,240,255,0.2)'; ctx.lineWidth = 2;
-        ctx.moveTo(plotX, 0); ctx.lineTo(plotX, plotH); // X=0
-        ctx.moveTo(plotX, plotH); ctx.lineTo(plotX + plotW, plotH); // Y=0
-        ctx.stroke();
-
-        // 4. Axis Labels & Ticks
-        ctx.font = `bold 10px ui-monospace, monospace`;
-        ctx.fillStyle = 'rgba(0,200,220,0.6)';
-        
-        // X Labels & Ticks
-        ctx.textBaseline = 'top'; ctx.textAlign = 'center';
-        for (let x = 0; x <= mmW; x += major) {
-            const px = plotX + x * scX;
-            if (px >= plotX && px <= CW) {
-                ctx.fillText(`${x}`, px, plotH + 4);
-                // Ticks
-                ctx.beginPath(); ctx.strokeStyle = 'rgba(0,240,255,0.3)';
-                ctx.moveTo(px, plotH); ctx.lineTo(px, plotH + 3); ctx.stroke();
-            }
-        }
-        
-        // Y Labels & Ticks
-        ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-        for (let y = 0; y <= mmH; y += major) {
-            const py = plotH - y * scY;
-            if (py >= 0 && py <= plotH) {
-                if (y !== 0) ctx.fillText(`${y}`, plotX - 6, py);
-                // Ticks
-                ctx.beginPath(); ctx.strokeStyle = 'rgba(0,240,255,0.3)';
-                ctx.moveTo(plotX, py); ctx.lineTo(plotX - 3, py); ctx.stroke();
-            }
-        }
-
-        // 5. Origin Marker
-        ctx.fillStyle = '#ff007f'; ctx.beginPath(); ctx.arc(plotX, plotH, 3, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = 'rgba(255,0,127,0.5)'; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(plotX, plotH - 6); ctx.lineTo(plotX, plotH); ctx.moveTo(plotX, plotH); ctx.lineTo(plotX + 6, plotH); ctx.stroke();
-
-        // 6. Detections (Align Tab)
-        if (activeTab === 'align' && Array.isArray(detections)) {
-            detections.forEach(d => {
-                const isSelected = d.workpiece_id === selectedWorkpieceId;
-                ctx.strokeStyle = isSelected ? '#00f0ff' : 'rgba(0,240,255,0.4)';
-                ctx.lineWidth = isSelected ? 2 : 1;
-                
-                if (d.box) {
-                    const [bx, by, bw, bh] = d.box;
-                    ctx.strokeRect(plotX + bx * scX, plotH - (by + bh) * scY, bw * scX, bh * scY);
-                } else if (d.points && d.points.length > 0) {
-                    ctx.beginPath();
-                    ctx.moveTo(plotX + d.points[0].x * scX, plotH - d.points[0].y * scY);
-                    for (let i = 1; i < d.points.length; i++) {
-                        ctx.lineTo(plotX + d.points[i].x * scX, plotH - d.points[i].y * scY);
-                    }
-                    ctx.closePath(); ctx.stroke();
-                }
-
-                ctx.fillStyle = isSelected ? '#00f0ff' : 'rgba(0,240,255,0.6)';
-                ctx.font = '9px monospace';
-                const lx = d.box ? d.box[0] : (d.points?.[0].x ?? 0);
-                const ly = d.box ? d.box[1] + d.box[3] : (d.points?.[0].y ?? 0);
-                ctx.fillText(d.label || d.workpiece_id, plotX + lx * scX + 2, plotH - ly * scY - 2);
-            });
-        }
-
-        // 7. Calibration Points (Calibrate Tab)
-        if (activeTab === 'mapping' && Array.isArray(calibrationPoints)) {
-            calibrationPoints.forEach(p => {
-                const px = plotX + p.physical_x * scX;
-                const py = plotH - p.physical_y * scY;
-                ctx.fillStyle = '#00f0ff';
-                ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2); ctx.fill();
-                ctx.strokeStyle = 'white'; ctx.lineWidth = 1; ctx.stroke();
-                ctx.font = 'bold 9px sans-serif'; ctx.fillStyle = 'white';
-                ctx.fillText(`ID:${p.id}`, px + 6, py - 6);
-            });
-        }
-
-    }, [detections, selectedWorkpieceId, mmW, mmH, scX, scY, plotW, plotH, major, minor, activeTab, calibrationPoints, renderTick]);
 
     return (
         <div className="flex flex-col bg-black/10 text-white p-4">
@@ -439,9 +305,63 @@ export const LensModule: React.FC = () => {
                             </p>
                         </div>
 
-                        <div className="bg-black/40 rounded-2xl border border-gray-800 p-2 flex items-center justify-center shadow-inner overflow-hidden">
-                            <canvas ref={canvasRef} width={CW} height={CH} className="rounded-lg max-w-full h-auto" />
-                        </div>
+                        <WorkspaceGrid
+                            width={CW}
+                            height={CH}
+                            machineWidthMm={mmW}
+                            machineHeightMm={mmH}
+                            majorSpacingMm={major}
+                            minorSpacingMm={minor}
+                            backgroundImageUrl={showPreviewFlash ? lensService.getPreviewUrl() : streamUrl}
+                            enablePanZoom={false}
+                            renderOverlay={(ctx, t) => {
+                                if (Array.isArray(calibrationPoints)) {
+                                    calibrationPoints.forEach(p => {
+                                        const size = p.size_mm || tagSize;
+                                        let min_x = p.physical_x;
+                                        let min_y = p.physical_y;
+
+                                        if (p.anchor === 'center') {
+                                            min_x -= size / 2;
+                                            min_y -= size / 2;
+                                        } else if (p.anchor?.includes('right')) {
+                                            min_x -= size;
+                                        }
+
+                                        if (p.anchor?.includes('top')) {
+                                            min_y -= size;
+                                        }
+
+                                        const px_min = min_x * t.baseScale;
+                                        const py_max = -(min_y + size) * t.baseScale;
+                                        const sizePx = size * t.baseScale;
+
+                                        // Draw the tag box
+                                        ctx.strokeStyle = 'rgba(0, 240, 255, 0.5)';
+                                        ctx.lineWidth = 1 / t.zoom;
+                                        ctx.setLineDash([4 / t.zoom, 4 / t.zoom]);
+                                        ctx.strokeRect(px_min, py_max, sizePx, sizePx);
+                                        ctx.setLineDash([]);
+                                        
+                                        // Fill the tag box lightly
+                                        ctx.fillStyle = 'rgba(0, 240, 255, 0.05)';
+                                        ctx.fillRect(px_min, py_max, sizePx, sizePx);
+
+                                        // Draw the anchor point
+                                        const anchorPx = p.physical_x * t.baseScale;
+                                        const anchorPy = -p.physical_y * t.baseScale;
+                                        ctx.fillStyle = '#00f0ff';
+                                        ctx.beginPath(); ctx.arc(anchorPx, anchorPy, 4 / t.zoom, 0, Math.PI * 2); ctx.fill();
+                                        ctx.strokeStyle = 'white'; ctx.lineWidth = 1 / t.zoom; ctx.stroke();
+                                        
+                                        ctx.save();
+                                        ctx.font = `${9 / t.zoom}px sans-serif`; ctx.fillStyle = 'white';
+                                        ctx.fillText(`ID:${p.id}`, anchorPx + (6 / t.zoom), anchorPy - (6 / t.zoom));
+                                        ctx.restore();
+                                    });
+                                }
+                            }}
+                        />
 
                         <div className="bg-black/40 border border-gray-800 rounded-2xl p-4 space-y-4">
                             <div className="flex items-center justify-between">

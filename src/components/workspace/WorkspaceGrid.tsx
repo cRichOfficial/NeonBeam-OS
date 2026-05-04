@@ -83,16 +83,8 @@ export const WorkspaceGrid: React.FC<WorkspaceGridProps> = ({
     // Set initial offset on mount so the machine bed is centered/visible
     useEffect(() => {
         if (externalOffsetX === undefined && externalOffsetY === undefined) {
-            const plotW = baseScale * machineWidthMm;
-            const plotH = baseScale * machineHeightMm;
-            const centeredX = (DW - plotW) / 2;
-            // Canvas origin sits at y = DH + offsetY.
-            // To frame the bed (0..plotH), we want the center of the bed
-            // at the center of the drawable area: offsetY - plotH/2 = -DH/2
-            // => offsetY = plotH/2 - DH/2 = (plotH - DH) / 2
-            const centeredY = (plotH - DH) / 2;
-            setInternalOffsetX(centeredX);
-            setInternalOffsetY(centeredY);
+            setInternalOffsetX(0);
+            setInternalOffsetY(0);
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []); // run once on mount
@@ -385,10 +377,7 @@ export const WorkspaceGrid: React.FC<WorkspaceGridProps> = ({
         ctx.moveTo(-ML, 0); ctx.lineTo(width, 0);
         ctx.stroke();
 
-        // Origin Dot
-        ctx.fillStyle = '#ff007f';
-        ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI * 2); ctx.fill();
-
+        // Origin Dot removed
         // Labels
         ctx.font = 'bold 12px ui-monospace,monospace';
         ctx.fillStyle = '#00f0ff';
