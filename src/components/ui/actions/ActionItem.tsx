@@ -8,6 +8,7 @@ export interface ActionItemProps {
     onDelete?: (action: BaseAction) => void;
     onClick?: (action: BaseAction) => void;
     className?: string;
+    readonly?: boolean;
 }
 
 export const ActionItem: React.FC<ActionItemProps> = ({
@@ -15,7 +16,8 @@ export const ActionItem: React.FC<ActionItemProps> = ({
     onEdit,
     onDelete,
     onClick,
-    className = ''
+    className = '',
+    readonly = false
 }) => {
     return (
         <div className={`flex items-center gap-3 w-full ${className}`}>
@@ -31,7 +33,7 @@ export const ActionItem: React.FC<ActionItemProps> = ({
                 </div>
             </div>
 
-            {(onEdit || onDelete) && (
+            {(onEdit || onDelete) && !readonly && (
                 <div className="flex-shrink-0 flex items-center gap-2">
                     {onEdit && (
                         <ActionButton variant="edit" onClick={(e) => { e.stopPropagation(); onEdit(action); }}>
