@@ -3,6 +3,7 @@ import React from 'react';
 export interface RadioOption {
     value: string | number;
     label: string | number;
+    color?: 'cyan' | 'pink' | 'orange' | 'green';
 }
 
 export interface RadioGroupProps {
@@ -21,12 +22,12 @@ export const RadioGroup: React.FC<RadioGroupProps> = ({
     className = '' 
 }) => {
     // Map accent names to our specific classes for dynamic rendering
-    const getColorClasses = (isSelected: boolean) => {
+    const getColorClasses = (isSelected: boolean, optColor?: 'cyan' | 'pink' | 'orange' | 'green') => {
         if (!isSelected) {
             return 'bg-black/60 text-gray-500 border-gray-700 hover:border-gray-400 hover:text-gray-300';
         }
         
-        switch (accentColor) {
+        switch (optColor || accentColor) {
             case 'pink':
                 return 'bg-miami-pink text-black border-miami-pink';
             case 'orange':
@@ -45,7 +46,7 @@ export const RadioGroup: React.FC<RadioGroupProps> = ({
                 <button 
                     key={String(opt.value)} 
                     onClick={() => onChange(opt.value)}
-                    className={`flex-1 py-1.5 rounded-lg text-[10px] font-black border transition-all ${getColorClasses(value === opt.value)}`}
+                    className={`flex-1 py-1.5 rounded-lg text-[10px] font-black border transition-all ${getColorClasses(value === opt.value, opt.color)}`}
                 >
                     {opt.label}
                 </button>
