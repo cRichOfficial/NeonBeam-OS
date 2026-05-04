@@ -83,11 +83,14 @@ export const WorkspaceGrid: React.FC<WorkspaceGridProps> = ({
     // Set initial offset on mount so the machine bed is centered/visible
     useEffect(() => {
         if (externalOffsetX === undefined && externalOffsetY === undefined) {
-            // Center the machine bed in the drawable area
             const plotW = baseScale * machineWidthMm;
             const plotH = baseScale * machineHeightMm;
             const centeredX = (DW - plotW) / 2;
-            const centeredY = (DH - plotH) / 2 + plotH; // Y is inverted: origin at bottom
+            // Canvas origin sits at y = DH + offsetY.
+            // To frame the bed (0..plotH), we want the center of the bed
+            // at the center of the drawable area: offsetY - plotH/2 = -DH/2
+            // => offsetY = plotH/2 - DH/2 = (plotH - DH) / 2
+            const centeredY = (plotH - DH) / 2;
             setInternalOffsetX(centeredX);
             setInternalOffsetY(centeredY);
         }
