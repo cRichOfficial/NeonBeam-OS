@@ -31,6 +31,7 @@ export interface WorkspaceGridProps {
     offsetY?: number;
     onTransformChange?: (zoom: number, offsetX: number, offsetY: number) => void;
     onClickMm?: (mmX: number, mmY: number, e: React.MouseEvent) => void;
+    onMouseMoveMm?: (mmX: number, mmY: number, e: React.MouseEvent) => void;
     
     // Render hooks
     renderOverlay?: (ctx: CanvasRenderingContext2D, transform: WorkspaceTransform) => void;
@@ -219,6 +220,23 @@ export const WorkspaceGrid: React.FC<WorkspaceGridProps> = ({
         if (mmX >= 0 && mmX <= machineWidthMm && mmY >= 0 && mmY <= machineHeightMm) {
             onClickMm(mmX, mmY, e);
         }
+    };
+
+    const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+        if (!onMouseMoveMm) return;
+        const rect = canvasRef.current?.getBoundingClientRect();
+        if (!rect) return;
+        
+        const px = e.clientX - rect.left - ML;
+        const py = e.clientY - rect.top - DH;
+
+        const logicalX = (px - offsetX) / zoom;
+        const logicalY = (py - offsetY) / zoom;
+
+        const mmX = logicalX / baseScale;
+        const mmY = -logicalY / baseScale;
+
+        onMouseMoveMm(mmX, mmY, e);
     };
 
     // Render loop
@@ -442,6 +460,7 @@ export const WorkspaceGrid: React.FC<WorkspaceGridProps> = ({
                 width={width * (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1)} 
                 height={height * (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1)} 
                 onClick={handleCanvasClick}
+                onMouseMove={handleCanvasMouseMove}
                 className="relative z-10 block cursor-crosshair rounded-lg"
                 style={{ width: `${width}px`, height: `${height}px`, touchAction: 'none' }}
             />
