@@ -66,8 +66,9 @@ export const WorkspaceGrid: React.FC<WorkspaceGridProps> = ({
 
     // Default margin layout from the previous canvas setup
     const ML = 32;
+    const MR = 12; // Right margin for labels/padding
     const MB = 20;
-    const DW = width - ML;
+    const DW = width - ML - MR;
     const DH = height - MB;
 
     // Internal state for pan/zoom if not fully controlled
@@ -444,7 +445,7 @@ export const WorkspaceGrid: React.FC<WorkspaceGridProps> = ({
 
     return (
         <div 
-            className={`inline-block bg-miami-cyan/5 border border-miami-cyan shadow-[0_0_15px_rgba(0,240,255,0.2)] rounded-2xl p-2 ${className}`}
+            className={`inline-block bg-miami-cyan/5 border border-miami-cyan shadow-[0_0_15px_rgba(0,240,255,0.2)] rounded-2xl p-2 overflow-hidden ${className}`}
         >
             {backgroundImageUrl && (
                 <img 
