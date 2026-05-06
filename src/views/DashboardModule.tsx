@@ -1,10 +1,29 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { useTelemetryStore } from '../store/telemetryStore';
 import { useAppSettingsStore } from '../store/appSettingsStore';
 import { useJobStore } from '../store/jobStore';
 import { useMacroStore } from '../store/macroStore';
 import type { GCodeMacro } from '../store/macroStore';
+import { View } from '../components/layout/View';
+import { ActionGrid } from '../components/ui/actions/ActionGrid';
+import type { BaseAction, ActionTheme } from '../components/ui/actions/types';
+
+const mapColorToTheme = (color?: string): ActionTheme => {
+    switch (color) {
+        case 'pink':
+        case 'purple':
+            return 'miami-pink';
+        case 'green':
+            return 'neon-green';
+        case 'yellow':
+            return 'neon-orange';
+        case 'cyan':
+        case 'gray':
+        default:
+            return 'miami-cyan';
+    }
+};
 
 // COMM_API is read from the persisted settings store so users can change it
 // at runtime via NeonBeam Settings → Network Bridge without a code restart.
@@ -122,7 +141,6 @@ export const DashboardModule: React.FC = () => {
     const [liveJogEnabled, setLiveJogEnabled] = useState(false);
     const [liveJogLoading, setLiveJogLoading] = useState(false);
     const [jogError,       setJogError]       = useState<string | null>(null);
-    const [showOverflow,   setShowOverflow]   = useState(false);
     const [isTestingLaser, setIsTestingLaser] = useState(false);
 
     // ── On mount & resume: sync settings and recover any in-progress job ──────
@@ -298,13 +316,50 @@ export const DashboardModule: React.FC = () => {
         ? Math.round((jobStatus!.lines_sent / jobStatus!.total_lines) * 100)
         : 0;
 
+    const macroToAction = useCallback((m: GCodeMacro): BaseAction => {
+        const isToggleOn = m.isToggle ? (toggleStates[m.id] ?? false) : false;
+        const disabled = isOffline || (m.isBuiltIn && m.id.startsWith('builtin_set_') && isAlarm);
+
+        return {
+            id: m.id,
+            title: m.label,
+            subtitle: m.isToggle ? (isToggleOn ? '• ON' : '○ OFF') : (m.isBuiltIn ? 'Built-in Macro' : 'Custom Macro'),
+            theme: m.isBuiltIn ? 'miami-cyan' : mapColorToTheme(m.color),
+            functionToCall: 'executeMacro',
+            functionArgs: m,
+            disabled: disabled
+        };
+    }, [isOffline, isAlarm, toggleStates]);
+
+    const allActions = useMemo(() => {
+        const actions: (BaseAction | undefined)[] = [];
+        const assignedIds = new Set<string>();
+
+        // Map layout to exactly 8 slots
+        for (let i = 0; i < 8; i++) {
+            const id = layout[i];
+            if (id) {
+                const m = macros.find(m => m.id === id);
+                if (m) {
+                    assignedIds.add(id);
+                    actions.push(macroToAction(m));
+                    continue;
+                }
+            }
+            actions.push(undefined);
+        }
+
+        // Append remaining unassigned macros for the overflow dropdown
+        const unassignedMacros = macros.filter(m => !assignedIds.has(m.id));
+        for (const m of unassignedMacros) {
+            actions.push(macroToAction(m));
+        }
+
+        return actions as BaseAction[];
+    }, [layout, macros, macroToAction]);
+
     return (
-        /**
-         * h-full: fills the bounded flex-1 min-h-0 overflow-hidden container in App.tsx.
-         * flex flex-col: stacks rows vertically.
-         * overflow-hidden: clips children so they can't break the no-scroll layout.
-         * gap-2 / p-3: tight but breathable spacing.
-         */
+        <View title="Machine Control" showHomeButton className="overflow-hidden touch-none overscroll-none">
         <div className="h-full flex flex-col gap-1 p-2 select-none overflow-hidden touch-none overscroll-none">
 
             {/* ── Row 1: Emergency Stop ───────────────────────────────────── */}
@@ -322,8 +377,8 @@ export const DashboardModule: React.FC = () => {
                 <div className="flex items-center gap-2 mb-1.5">
                     <StateBadge state={machineState} />
                     <div className="flex gap-3 flex-1 justify-end font-mono text-sm font-bold">
-                        {(['x', 'y', 'z'] as const).map((ax, i) => (
-                            <span key={ax} className={['text-miami-cyan', 'text-miami-pink', 'text-miami-purple'][i]}>
+                        {(['x', 'y', 'z'] as const).map((ax) => (
+                            <span key={ax} className="text-miami-cyan">
                                 <span className="text-[9px] text-gray-500 font-bold uppercase mr-0.5">{ax}</span>
                                 {telemetry.wpos[ax].toFixed(2)}
                             </span>
@@ -353,10 +408,9 @@ export const DashboardModule: React.FC = () => {
                     {jobStatus && (
                         <span className={`text-xs font-black tracking-wider ${
                             jobStatus.is_streaming ? 'text-miami-pink'
-                            : jobStatus.is_queued  ? 'text-yellow-400'
                             : 'text-green-400'
                         }`}>
-                            {jobStatus.is_streaming ? '⚙ RUNNING' : jobStatus.is_queued ? '📋 READY' : '✓ DONE'}
+                            {jobStatus.is_streaming ? '⚙ RUNNING' : jobStatus.is_queued ? 'READY' : '✓ DONE'}
                         </span>
                     )}
                 </div>
@@ -372,7 +426,7 @@ export const DashboardModule: React.FC = () => {
                             <div
                                 className={`h-full rounded-full transition-all duration-700 ${
                                     jobStatus.is_streaming ? 'bg-miami-pink'
-                                    : jobStatus.is_queued  ? 'bg-yellow-500 opacity-40'
+                                    : jobStatus.is_queued  ? 'bg-green-500 opacity-30'
                                     : 'bg-green-500'
                                 }`}
                                 style={{ width: `${jobStatus.is_queued ? 100 : jobPct}%` }}
@@ -497,138 +551,16 @@ export const DashboardModule: React.FC = () => {
                 </div>
 
                 {/* ── Macro Grid (replaces Homing/Work Origin) ────────────── */}
-                <div className="flex-shrink-0 grid grid-cols-3 gap-1 relative">
-                    {(() => {
-                        const getColorClasses = (color = 'cyan', isToggleOn = false) => {
-                            if (isToggleOn) {
-                                switch (color) {
-                                    case 'pink': return 'bg-miami-pink border-none text-black shadow-[0_0_12px_rgba(255,42,133,0.4)]';
-                                    case 'purple': return 'bg-miami-purple border-none text-black shadow-[0_0_12px_rgba(157,78,221,0.4)]';
-                                    case 'green': return 'bg-green-400 border-none text-black shadow-[0_0_12px_rgba(74,222,128,0.4)]';
-                                    case 'yellow': return 'bg-yellow-400 border-none text-black shadow-[0_0_12px_rgba(250,204,21,0.4)]';
-                                    case 'gray': return 'bg-gray-400 border-none text-black shadow-[0_0_12px_rgba(156,163,175,0.4)]';
-                                    case 'cyan':
-                                    default: return 'bg-miami-cyan border-none text-black shadow-[0_0_12px_rgba(0,240,255,0.4)]';
-                                }
-                            } else {
-                                switch (color) {
-                                    case 'pink': return 'bg-miami-pink/10 border-miami-pink/40 text-miami-pink hover:bg-miami-pink/20 hover:border-miami-pink/60';
-                                    case 'purple': return 'bg-miami-purple/20 border-miami-purple/40 text-miami-purple hover:bg-miami-purple/30 hover:border-miami-purple/70';
-                                    case 'green': return 'bg-green-400/10 border-green-400/40 text-green-400 hover:bg-green-400/20 hover:border-green-400/60';
-                                    case 'yellow': return 'bg-yellow-400/10 border-yellow-400/40 text-yellow-400 hover:bg-yellow-400/20 hover:border-yellow-400/60';
-                                    case 'gray': return 'bg-gray-400/10 border-gray-400/40 text-gray-400 hover:bg-gray-400/20 hover:border-gray-400/60';
-                                    case 'cyan':
-                                    default: return 'bg-miami-cyan/10 border-miami-cyan/40 text-miami-cyan hover:bg-miami-cyan/20 hover:border-miami-cyan/60';
-                                }
-                            }
-                        };
-
-                        return (
-                            <>
-                                {layout.slice(0, 11).map((macroId, idx) => {
-                                    const m = macroId ? macros.find(x => x.id === macroId) : null;
-                        const disabled = !m || isOffline || (m.isBuiltIn && m.id.startsWith('builtin_set_') && isAlarm);
-                        const isToggleOn = m ? (toggleStates[m.id] ?? false) : false;
-                        
-                        return (
-                            <button
-                                key={idx}
-                                onClick={() => m && executeMacro(m)}
-                                disabled={disabled}
-                                title={m && !m.isBuiltIn ? m.gcode : undefined}
-                                className={`h-11 text-[10px] font-black uppercase tracking-wide rounded-xl border transition-all active:scale-95 flex flex-col items-center justify-center text-center px-1 overflow-hidden
-                                        ${!m ? 'bg-black/20 border-gray-800/50 cursor-default' : 
-                                      disabled ? 'bg-black/20 border-gray-800 text-gray-700 cursor-not-allowed' :
-                                      m.isBuiltIn ? 'bg-gradient-to-b from-miami-cyan/80 to-blue-500/70 text-black border-transparent hover:shadow-[0_0_14px_rgba(0,240,255,0.45)]' :
-                                      getColorClasses(m.color, isToggleOn)
-                                    }`}
-                            >
-                                <span className="truncate w-full">{m ? m.label : ''}</span>
-                                {m?.isToggle && (
-                                    <span className={`text-[7px] leading-tight block w-full mt-0.5 ${isToggleOn ? 'text-black font-black' : 'text-gray-500'}`}>
-                                        {isToggleOn ? '• ON' : '○ OFF'}
-                                    </span>
-                                )}
-                            </button>
-                        );
-                    })}
-
-                    {/* 12th slot: overflow dropdown OR macro 12 */}
-                    {(() => {
-                        const assignedPrefix = layout.slice(0, 11);
-                        const overflowMacros = macros.filter(m => !assignedPrefix.includes(m.id));
-                        
-                        if (overflowMacros.length > 1) {
-                            return (
-                                <div className="relative">
-                                    <button 
-                                        onClick={() => setShowOverflow(!showOverflow)}
-                                        className="w-full h-11 text-[10px] bg-black/60 font-black uppercase tracking-wide rounded-xl border border-gray-700 text-gray-300 hover:border-miami-cyan/50 transition-all flex items-center justify-center"
-                                    >
-                                        More ({overflowMacros.length}) ▾
-                                    </button>
-                                    
-                                    {showOverflow && (
-                                        <>
-                                            <div className="fixed inset-0 z-40" onClick={() => setShowOverflow(false)} />
-                                            <div className="absolute bottom-full right-0 mb-2 w-48 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-                                                <div className="max-h-48 overflow-y-auto">
-                                                    {overflowMacros.map(um => (
-                                                        <button
-                                                            key={um.id}
-                                                            onClick={() => { executeMacro(um); setShowOverflow(false); }}
-                                                            disabled={isOffline || (um.isBuiltIn && um.id.startsWith('builtin_set_') && isAlarm)}
-                                                            className="w-full text-left px-3 py-2.5 text-[10px] font-bold text-gray-300 border-b border-gray-800 last:border-b-0 hover:bg-white/5 hover:text-white disabled:opacity-30 transition-colors"
-                                                        >
-                                                            <span className={um.isBuiltIn ? '' : (() => {
-                                                                switch(um.color) {
-                                                                    case 'pink': return 'text-miami-pink';
-                                                                    case 'purple': return 'text-miami-purple';
-                                                                    case 'green': return 'text-green-400';
-                                                                    case 'yellow': return 'text-yellow-400';
-                                                                    case 'gray': return 'text-gray-400';
-                                                                    default: return 'text-miami-cyan';
-                                                                }
-                                                            })()}>{um.label}</span>
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        </>
-                                    )}
-                                </div>
-                            );
-                        } else {
-                            const m = overflowMacros[0] || null;
-                            const disabled = !m || isOffline || (m.isBuiltIn && m.id.startsWith('builtin_set_') && isAlarm);
-                            const isToggleOn = m ? (toggleStates[m.id] ?? false) : false;
-                            
-                            return (
-                                <button
-                                    onClick={() => m && executeMacro(m)}
-                                    disabled={disabled}
-                                    className={`h-11 text-[10px] font-black uppercase tracking-wide rounded-xl border transition-all active:scale-95 flex flex-col items-center justify-center text-center px-1 overflow-hidden
-                                        ${!m ? 'bg-black/20 border-gray-800/50 cursor-default' : 
-                                          disabled ? 'bg-black/20 border-gray-800 text-gray-700 cursor-not-allowed' :
-                                          m.isBuiltIn ? 'bg-gradient-to-b from-miami-cyan/80 to-blue-500/70 text-black border-transparent hover:shadow-[0_0_14px_rgba(0,240,255,0.45)]' :
-                                          getColorClasses(m.color, isToggleOn)
-                                        }`}
-                                >
-                                    <span className="truncate w-full">{m ? m.label : ''}</span>
-                                    {m?.isToggle && (
-                                        <span className={`text-[7px] leading-tight block w-full mt-0.5 ${isToggleOn ? 'text-black font-black' : 'text-gray-500'}`}>
-                                            {isToggleOn ? '• ON' : '○ OFF'}
-                                        </span>
-                                    )}
-                                </button>
-                            );
-                        }
-                    })()}
-                    </>
-                );
-            })()}
-        </div>
-    </div>
+                <div className="flex-shrink-0 relative mt-1">
+                    <ActionGrid 
+                        rows={2} 
+                        cols={4} 
+                        actions={allActions} 
+                        enableOverflow={true} 
+                        onExecute={(act) => executeMacro(act.functionArgs as GCodeMacro)} 
+                    />
+                </div>
+            </div>
 
     {/* ── Row 4: Machine action bar ─────────────────────────────────── */}
     <div className="flex-shrink-0 flex gap-2">
@@ -667,5 +599,6 @@ export const DashboardModule: React.FC = () => {
             </div>
 
         </div>
+        </View>
     );
 };

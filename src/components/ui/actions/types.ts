@@ -7,4 +7,5 @@ export interface BaseAction {
     theme?: ActionTheme;
     functionToCall: string;
     functionArgs?: any;
+    disabled?: boolean;
 }

@@ -51,13 +51,17 @@ export const ActionGrid: React.FC<ActionGridProps> = ({
                     </button>
                     {dropdownOpen && (
                         <div className="absolute bottom-full right-0 mb-2 w-48 bg-black/95 border border-gray-700 rounded-xl shadow-2xl p-2 flex flex-col gap-1 z-50 overflow-y-auto max-h-64">
-                            {actions.slice(visibleCells - 1).map(act => (
+                            {actions.slice(visibleCells - 1).filter(Boolean).map(act => (
                                 <button 
                                     key={act.id}
-                                    onClick={() => { setDropdownOpen(false); onExecute(act); }}
-                                    className={`text-left px-3 py-3 rounded-lg text-xs font-bold transition-colors border ${getThemeClasses(act.theme)}`}
+                                    onClick={() => { if(!act.disabled) { setDropdownOpen(false); onExecute(act); } }}
+                                    disabled={act.disabled}
+                                    className={`text-left px-3 py-3 rounded-lg text-xs font-bold transition-colors border ${act.disabled ? 'opacity-50 cursor-not-allowed bg-black/20 border-gray-800 text-gray-700' : getThemeClasses(act.theme)}`}
                                 >
-                                    {act.title}
+                                    <div className="flex flex-col">
+                                        <span>{act.title}</span>
+                                        {act.subtitle && <span className="text-[8px] opacity-70 mt-0.5">{act.subtitle}</span>}
+                                    </div>
                                 </button>
                             ))}
                         </div>
@@ -71,10 +75,14 @@ export const ActionGrid: React.FC<ActionGridProps> = ({
             return (
                 <button 
                     key={`cell-${index}`} 
-                    onClick={() => onExecute(action)}
-                    className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all active:scale-95 shadow-[0_4px_10px_rgba(0,0,0,0.5)] aspect-square text-center ${getThemeClasses(action.theme)}`}
+                    onClick={() => { if(!action.disabled) onExecute(action); }}
+                    disabled={action.disabled}
+                    className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all active:scale-95 shadow-[0_4px_10px_rgba(0,0,0,0.5)] aspect-square text-center ${action.disabled ? 'opacity-50 cursor-not-allowed bg-black/20 border-gray-800 text-gray-700' : getThemeClasses(action.theme)}`}
                 >
                     <span className="text-xs font-bold leading-tight line-clamp-3">{action.title}</span>
+                    {action.subtitle && (
+                        <span className={`text-[8px] leading-tight block w-full mt-0.5 ${action.disabled ? 'text-gray-600' : 'text-current opacity-80'}`}>{action.subtitle}</span>
+                    )}
                 </button>
             );
         }
