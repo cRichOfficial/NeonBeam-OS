@@ -105,10 +105,6 @@ export const PlaceWithLensModal: React.FC<PlaceWithLensModalProps> = ({
         let detRot = d.angle_deg ?? 0;
         if (d.corners && d.corners.length >= 2) {
             const c = d.corners;
-            const dx = c[1].x - c[0].x;
-            const dy = c[1].y - c[0].y;
-            detRot = Math.atan2(dy, dx) * 180 / Math.PI;
-
             if (d.corners.length >= 4) {
                 const edge0 = Math.hypot(c[1].x - c[0].x, c[1].y - c[0].y);
                 const edge1 = Math.hypot(c[2].x - c[1].x, c[2].y - c[1].y);
@@ -358,7 +354,7 @@ export const PlaceWithLensModal: React.FC<PlaceWithLensModalProps> = ({
                                 ctx.save();
                                 ctx.translate(gcx_px, gcy_px);
                                 if (placement.rotation) {
-                                    ctx.rotate(-placement.rotation * Math.PI / 180);
+                                    ctx.rotate(placement.rotation * Math.PI / 180);
                                 }
                                 ctx.fillStyle = fileKind === 'bitmap' ? 'rgba(255,255,255,0.1)' : 'rgba(255,0,127,0.1)';
                                 ctx.strokeStyle = fileKind === 'bitmap' ? 'rgba(255,255,255,0.5)' : '#ff007f';
