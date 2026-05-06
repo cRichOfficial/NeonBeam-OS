@@ -55,6 +55,7 @@ export const WorkspaceGrid: React.FC<WorkspaceGridProps> = ({
     offsetY: externalOffsetY,
     onTransformChange,
     onClickMm,
+    onMouseMoveMm,
     renderOverlay,
     children,
     className = '',
