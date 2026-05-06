@@ -30,7 +30,6 @@ const _COMM_API_FALLBACK = '';
 type FileKind     = 'svg' | 'bitmap';
 type DitherMethod = 'threshold' | 'floyd-steinberg' | 'atkinson' | 'bayer';
 type StudioTab    = 'design' | 'gcode';
-type GCodeView    = 'preview' | 'raw';
 
 // ── Dithering ──────────────────────────────────────────────────────────────────
 function toGray(src: HTMLCanvasElement): Float32Array {
@@ -156,8 +155,8 @@ export const StudioModule: React.FC = () => {
     // ── Tabs & GCode state ──
     const [activeTab,   setActiveTab]   = useState<StudioTab>('design');
     const [gcodeText,   setGcodeText]   = useState('');
-    const [gcodeView,   setGcodeView]   = useState<GCodeView>('preview');
-    const [gcodoMoves,  setGCodeMoves]  = useState<PreviewMove[]>([]);
+    const [showRawGCode,setShowRawGCode]= useState(false);
+    const [gcodeMoves,  setGCodeMoves]  = useState<PreviewMove[]>([]);
     const [isGenerating,setIsGenerating]= useState(false);
 
     // ── Viewport State (Zoom & Pan) ──
@@ -361,10 +360,10 @@ export const StudioModule: React.FC = () => {
                 ctx.globalAlpha = 1;
 
                 // GCode toolpath overlay — cut=pink, fill=purple, bitmap=cyan, rapid=gray
-                if (gcodoMoves.length > 0) {
-                    let prev = gcodoMoves[0];
-                    for (let i = 1; i < gcodoMoves.length; i++) {
-                        const m = gcodoMoves[i];
+                if (gcodeMoves.length > 0) {
+                    let prev = gcodeMoves[0];
+                    for (let i = 1; i < gcodeMoves.length; i++) {
+                        const m = gcodeMoves[i];
                         const x1 = ML + prev.x * scX, y1 = plotH - prev.y * scY;
                         const x2 = ML + m.x    * scX, y2 = plotH - m.y    * scY;
                         ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
@@ -492,7 +491,7 @@ export const StudioModule: React.FC = () => {
         ctx.beginPath(); ctx.moveTo(ML, plotH - 8); ctx.lineTo(ML, plotH); ctx.moveTo(ML, plotH); ctx.lineTo(ML + 8, plotH); ctx.stroke();
         ctx.restore();
 
-    }, [renderTick, mmW, mmH, scX, scY, plotW, plotH, major, minor, fileKind, posX, posY, scalePct, rotation, operations, dpi, activeTab, gcodoMoves, viewZoom, viewOffsetX, viewOffsetY]);
+    }, [renderTick, mmW, mmH, scX, scY, plotW, plotH, major, minor, fileKind, posX, posY, scalePct, rotation, operations, dpi, activeTab, gcodeMoves, viewZoom, viewOffsetX, viewOffsetY]);
 
 
     // ── Interaction Handlers ──
@@ -680,7 +679,7 @@ export const StudioModule: React.FC = () => {
             setGcodeText(gcode);
             setGCodeMoves(parseGCodeForPreview(gcode));
             setActiveTab('gcode');
-            setGcodeView('preview');
+            setShowRawGCode(false);
         } catch (err) {
             console.error('GCode Generation Error:', err);
             alert('An error occurred while generating GCode. Check the console for details.');
@@ -1372,32 +1371,79 @@ export const StudioModule: React.FC = () => {
             {activeTab === 'gcode' && gcodeText && (
                 <div className="flex-1 overflow-y-auto px-3 space-y-3 pb-10">
 
-                    {/* Sub-tab: Preview | Raw */}
-                    <div className="flex gap-1 bg-black/40 rounded-xl p-1 border border-gray-800">
-                        {(['preview', 'raw'] as GCodeView[]).map(v => (
-                            <button key={v} onClick={() => setGcodeView(v)}
-                                className={`flex-1 py-1.5 rounded-lg text-xs font-black transition-all capitalize ${gcodeView === v ? 'bg-miami-cyan text-black' : 'text-gray-500 hover:text-gray-300'}`}>
-                                {v === 'preview' ? '🗺 Toolpath Preview' : '📄 Raw GCode'}
-                            </button>
-                        ))}
-                    </div>
+                    {/* Toolpath Preview */}
+                    <SectionCard title="Toolpath Preview">
+                        <div className="w-full">
+                            <WorkspaceGrid 
+                                width={Math.max(10, gridWidth - 20)} 
+                                height={Math.max(10, CH * 0.6)}
+                                machineWidthMm={mmW} 
+                                machineHeightMm={mmH}
+                                majorSpacingMm={major} 
+                                minorSpacingMm={minor}
+                                enablePanZoom={true}
+                                renderOverlay={(ctx, t) => {
+                                    if (!gcodeMoves || gcodeMoves.length === 0) return;
+                                    ctx.save();
+                                    
+                                    // 1. Draw Rapids
+                                    ctx.beginPath();
+                                    let px = 0, py = 0;
+                                    for (const m of gcodeMoves) {
+                                        if (m.rapid) {
+                                            ctx.moveTo(px * t.baseScale, -py * t.baseScale);
+                                            ctx.lineTo(m.x * t.baseScale, -m.y * t.baseScale);
+                                        }
+                                        px = m.x; py = m.y;
+                                    }
+                                    ctx.strokeStyle = '#00ff00';
+                                    ctx.lineWidth = 1 / t.zoom;
+                                    ctx.stroke();
 
-                    {/* Stats bar */}
-                    <div className="grid grid-cols-3 gap-2">
-                        {[
-                            { label: 'Lines',   value: gcodeText.split('\n').filter(Boolean).length },
-                            { label: 'Burn ops',value: gcodoMoves.filter(m => m.burn).length },
-                            { label: 'Rapids',  value: gcodoMoves.filter(m => m.rapid).length },
-                        ].map(({ label, value }) => (
-                            <div key={label} className="bg-black/50 border border-gray-800 rounded-xl p-2 text-center">
-                                <span className="block text-lg font-black text-miami-cyan font-mono">{value}</span>
-                                <span className="block text-[9px] text-gray-500 uppercase font-bold">{label}</span>
-                            </div>
-                        ))}
+                                    // 2. Draw Fills/Rasters
+                                    ctx.beginPath();
+                                    px = 0; py = 0;
+                                    for (const m of gcodeMoves) {
+                                        if (m.burn && (m.opType === 'fill' || m.opType === 'raster')) {
+                                            ctx.moveTo(px * t.baseScale, -py * t.baseScale);
+                                            ctx.lineTo(m.x * t.baseScale, -m.y * t.baseScale);
+                                        }
+                                        px = m.x; py = m.y;
+                                    }
+                                    ctx.strokeStyle = 'rgba(255,0,127,0.5)';
+                                    ctx.lineWidth = 1 / t.zoom;
+                                    ctx.stroke();
+
+                                    // 3. Draw Cuts (on top)
+                                    ctx.beginPath();
+                                    px = 0; py = 0;
+                                    for (const m of gcodeMoves) {
+                                        if (m.burn && (!m.opType || m.opType === 'cut')) {
+                                            ctx.moveTo(px * t.baseScale, -py * t.baseScale);
+                                            ctx.lineTo(m.x * t.baseScale, -m.y * t.baseScale);
+                                        }
+                                        px = m.x; py = m.y;
+                                    }
+                                    ctx.strokeStyle = '#ff007f';
+                                    ctx.lineWidth = 1.5 / t.zoom;
+                                    ctx.stroke();
+
+                                    ctx.restore();
+                                }}
+                            />
+                        </div>
+                    </SectionCard>
+
+                    <div className="px-2">
+                        <ToggleSwitch 
+                            label="Show Raw GCode" 
+                            checked={showRawGCode} 
+                            onChange={setShowRawGCode} 
+                        />
                     </div>
 
                     {/* Raw GCode text */}
-                    {gcodeView === 'raw' && (
+                    {showRawGCode && (
                         <div className="bg-black/80 border border-gray-800 rounded-xl overflow-hidden">
                             <pre className="text-[10px] text-gray-400 font-mono p-3 overflow-auto max-h-64 leading-relaxed whitespace-pre-wrap">
                                 {gcodeText}
@@ -1421,10 +1467,9 @@ export const StudioModule: React.FC = () => {
                                     </span>
                                 </div>
                             ) : (
-                                <button onClick={sendToMachine}
-                                    className="py-3 bg-gradient-to-r from-miami-cyan to-miami-purple text-black font-black rounded-xl text-sm shadow-[0_0_12px_rgba(0,240,255,0.2)] hover:shadow-[0_0_20px_rgba(0,240,255,0.4)] transition-all">
-                                    📡 Send to Machine
-                                </button>
+                                <ActionButton variant="global" onClick={sendToMachine}>
+                                    Send to Machine
+                                </ActionButton>
                             )}
                         </div>
                     )}
@@ -1435,7 +1480,7 @@ export const StudioModule: React.FC = () => {
                             <div className="flex items-center justify-between">
                                 <div>
                                     <p className="text-xs font-black text-miami-cyan">
-                                        {jobStatus.is_streaming ? '⚙ Machine Running…' : '✅ Job Complete'}
+                                        {jobStatus.is_streaming ? '⚙ Machine Running…' : '✅ Upload Complete'}
                                     </p>
                                     <p className="text-[10px] text-gray-500 font-mono mt-0.5 truncate max-w-[180px]">
                                         {jobStatus.job_name}
@@ -1462,25 +1507,16 @@ export const StudioModule: React.FC = () => {
                             </div>
 
                             {/* Cancel / dismiss */}
-                            {jobStatus.is_streaming ? (
+                            {jobStatus.is_streaming && (
                                 <button onClick={cancelJob}
                                     className="w-full py-2 bg-red-900/40 border border-red-800 hover:bg-red-800/60 text-red-400 font-black rounded-xl text-xs transition-all">
                                     ⛔ Cancel Job (sends soft-reset to machine)
-                                </button>
-                            ) : (
-                                <button onClick={() => setJobStatus(null)}
-                                    className="w-full py-2 bg-black border border-gray-800 text-gray-600 hover:text-gray-400 font-bold rounded-xl text-xs transition-all">
-                                    Dismiss
                                 </button>
                             )}
                         </div>
                     )}
 
-                    {/* Back to design */}
-                    <button onClick={() => setActiveTab('design')}
-                        className="w-full py-2 text-xs text-gray-600 hover:text-gray-400 transition-colors font-bold">
-                        ← Back to Design
-                    </button>
+
                 </div>
             )}
             {isGenerating && (

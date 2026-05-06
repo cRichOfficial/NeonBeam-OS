@@ -269,21 +269,21 @@ export interface PreviewMove {
     x: number; y: number;
     burn:  boolean;          // true = laser firing (G1 with S > 0)
     rapid: boolean;          // true = G0 rapid move
-    opType?: 'cut' | 'fill'; // detected from ; Op N / M : name [cut/fill] header
+    opType?: 'cut' | 'fill' | 'raster'; // detected from ; Op N / M : name [cut/fill/raster] header
 }
 
 export function parseGCodeForPreview(text: string): PreviewMove[] {
     const moves: PreviewMove[] = [];
     let cx = 0, cy = 0, laserOn = false;
-    let currentOpType: 'cut' | 'fill' | undefined;
+    let currentOpType: 'cut' | 'fill' | 'raster' | undefined;
 
     for (const raw of text.split('\n')) {
         const trimmed = raw.trim();
 
         // Detect op-type from our multi-op headers:  ; Op N / M : name [cut]  or  [fill]
-        const opHeader = trimmed.match(/;\s*Op\s+\d+\s*\/\s*\d+\s*:.*\[(cut|fill)\]/i);
+        const opHeader = trimmed.match(/;\s*Op\s+\d+\s*\/\s*\d+\s*:.*\[(cut|fill|raster)\]/i);
         if (opHeader) {
-            currentOpType = opHeader[1].toLowerCase() as 'cut' | 'fill';
+            currentOpType = opHeader[1].toLowerCase() as 'cut' | 'fill' | 'raster';
         }
 
         const line = trimmed.replace(/;.*$/, '').trim().toUpperCase();
