@@ -114,6 +114,51 @@ const DiscoverySheet: React.FC<{
     );
 };
 
+const FontPicker: React.FC<{
+    current: string;
+    onSelect: (font: string) => void;
+    onClose: () => void;
+}> = ({ current, onSelect, onClose }) => {
+    const fonts = [
+        'Anta',
+        'Audiowide',
+        'Jaro',
+        'Stalinist One',
+        'Wallpoet'
+    ];
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+            <div className="relative w-full max-w-sm bg-miami-dark border border-gray-700 rounded-[2rem] p-6 shadow-2xl animate-in zoom-in-95 fade-in duration-200">
+                <h3 className="text-miami-cyan font-black text-sm uppercase tracking-widest mb-6 text-center">Select System Font</h3>
+                <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1 custom-scrollbar">
+                    {fonts.map(font => (
+                        <button
+                            key={font}
+                            onClick={() => { onSelect(font); onClose(); }}
+                            className={`w-full text-left px-5 py-4 rounded-2xl border transition-all ${
+                                current === font 
+                                    ? 'bg-miami-cyan/10 border-miami-cyan text-white shadow-[0_0_15px_rgba(0,240,255,0.2)]' 
+                                    : 'bg-black/40 border-gray-800 text-gray-400 hover:border-gray-600'
+                            }`}
+                            style={{ fontFamily: `'${font}', sans-serif` }}
+                        >
+                            <span className="text-xl">{font}</span>
+                        </button>
+                    ))}
+                </div>
+                <button
+                    onClick={onClose}
+                    className="mt-8 w-full py-3.5 bg-gray-800/50 hover:bg-gray-800 text-gray-400 rounded-2xl text-xs font-black uppercase tracking-widest transition-colors border border-gray-700"
+                >
+                    Cancel
+                </button>
+            </div>
+        </div>
+    );
+};
+
 // ── Main component ────────────────────────────────────────────────────────────
 export const AppSettingsModule: React.FC = () => {
     const { settings, updateSettings } = useAppSettingsStore();
@@ -126,6 +171,7 @@ export const AppSettingsModule: React.FC = () => {
 
     const [forceCustomSvg, setForceCustomSvg] = useState(false);
     const [forceCustomBitmap, setForceCustomBitmap] = useState(false);
+    const [showFontPicker, setShowFontPicker] = useState(false);
 
     const isSvgCustom = forceCustomSvg || ![72, 96, 150, 300].includes(settings.svgDpi);
     const activeSvgRadio = isSvgCustom ? 'custom' : settings.svgDpi;
@@ -292,6 +338,17 @@ export const AppSettingsModule: React.FC = () => {
                         />
                     </div>
 
+                    <div className="flex items-center justify-between py-3 border-b border-gray-800/50">
+                        <span className="text-sm font-medium text-gray-200">System Font</span>
+                        <ActionButton 
+                            variant="normal" 
+                            className="py-1.5 px-3 text-xs"
+                            onClick={() => setShowFontPicker(true)}
+                        >
+                            {settings.systemFont}
+                        </ActionButton>
+                    </div>
+
                     <div className="flex items-center justify-between pt-4 pb-2">
                         <span className="text-sm font-medium text-gray-200">System Theme</span>
                         <span className="text-sm font-bold bg-gradient-to-r from-miami-pink to-miami-purple bg-clip-text text-transparent tracking-wide">Miami Neon</span>
@@ -419,6 +476,14 @@ export const AppSettingsModule: React.FC = () => {
                     onAdopt={adoptDiscovery}
                     onClose={() => setScanResults(null)}
                     sidecarNote={sidecarNote}
+                />
+            )}
+
+            {showFontPicker && (
+                <FontPicker 
+                    current={settings.systemFont}
+                    onSelect={(f) => updateSettings({ systemFont: f })}
+                    onClose={() => setShowFontPicker(false)}
                 />
             )}
         </View>

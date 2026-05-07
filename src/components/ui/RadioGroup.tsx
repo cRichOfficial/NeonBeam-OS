@@ -29,24 +29,24 @@ export const RadioGroup: React.FC<RadioGroupProps> = ({
         
         switch (optColor || accentColor) {
             case 'pink':
-                return 'bg-miami-pink text-black border-miami-pink';
+                return 'bg-miami-pink text-black border-miami-pink shadow-[0_0_10px_rgba(255,0,127,0.3)]';
             case 'orange':
-                return 'bg-neon-orange text-black border-neon-orange';
+                return 'bg-neon-orange text-black border-neon-orange shadow-[0_0_10px_rgba(255,95,31,0.3)]';
             case 'green':
-                return 'bg-neon-green text-black border-neon-green';
+                return 'bg-neon-green text-black border-neon-green shadow-[0_0_10px_rgba(57,255,20,0.3)]';
             case 'cyan':
             default:
-                return 'bg-miami-cyan text-black border-miami-cyan';
+                return 'bg-miami-cyan text-black border-miami-cyan shadow-[0_0_10px_rgba(0,240,255,0.3)]';
         }
     };
 
     return (
-        <div className={`flex flex-wrap gap-1.5 ${className}`}>
+        <div className={`grid grid-cols-2 gap-2 ${className}`}>
             {options.map((opt) => (
                 <button 
                     key={String(opt.value)} 
                     onClick={() => onChange(opt.value)}
-                    className={`flex-1 min-w-fit px-2 py-1.5 rounded-lg text-[10px] whitespace-nowrap font-black border transition-all ${getColorClasses(value === opt.value, opt.color)}`}
+                    className={`px-2 py-2 rounded-lg text-[10px] whitespace-nowrap font-black border transition-all ${getColorClasses(value === opt.value, opt.color)}`}
                 >
                     {opt.label}
                 </button>

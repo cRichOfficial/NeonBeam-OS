@@ -269,10 +269,10 @@ export const MachineSettingsModule: React.FC = () => {
                             variant={flashStatus === 'done' ? 'add' : flashStatus === 'error' ? 'remove' : 'normal'}
                             className="w-full py-3"
                         >
-                            {flashStatus === 'flashing' ? '⏳ Writing…' :
-                             flashStatus === 'done'     ? '✅ Flashed!' :
-                             flashStatus === 'error'    ? '❌ Failed' :
-                             dirtyCount > 0 ? `⚡ Flash ${dirtyCount} Change${dirtyCount > 1 ? 's' : ''}` : 'No Changes'}
+                            {flashStatus === 'flashing' ? 'Writing…' :
+                             flashStatus === 'done'     ? 'Flashed!' :
+                             flashStatus === 'error'    ? 'Failed' :
+                             dirtyCount > 0 ? `Flash ${dirtyCount} Change${dirtyCount > 1 ? 's' : ''}` : 'No Changes'}
                         </ActionButton>
                     </div>
 

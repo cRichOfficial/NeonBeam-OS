@@ -95,15 +95,8 @@ ModuleRegistry.register({
     title: 'Machine Config',    
     icon: (
         <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="24" cy="24" r="6" stroke="currentColor" strokeWidth="1.5" />
-            <path d="M24 10V14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            <path d="M24 34V38" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            <path d="M10 24H14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            <path d="M34 24H38" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            <path d="M14.1 14.1L16.9 16.9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            <path d="M31.1 31.1L33.9 33.9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            <path d="M14.1 33.9L16.9 31.1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            <path d="M31.1 16.9L33.9 14.1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            <path d="M24 16C28.4183 16 32 19.5817 32 24C32 28.4183 28.4183 32 24 32C19.5817 32 16 28.4183 16 24C16 19.5817 19.5817 16 24 16Z" stroke="currentColor" strokeWidth="1.5"/>
+            <path d="M21 4H27L28 10L31 11L36 7L41 12L37 17L38 20L44 21V27L38 28L37 31L41 36L36 41L31 37L28 38L27 44H21L20 38L17 37L12 41L7 36L11 31L10 28L4 27V21L10 20L11 17L7 12L12 7L17 11L20 10L21 4Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
         </svg>
     ), 
     component: MachineSettingsModule,  
@@ -189,9 +182,13 @@ function App() {
     const navigateHome   = useNavigationStore(s => s.navigateHome);
     const modules = ModuleRegistry.getModules();
     const debugMode = useAppSettingsStore(s => s.settings.debugMode);
+    const systemFont = useAppSettingsStore(s => s.settings.systemFont);
 
     return (
-        <div className="h-dvh bg-miami-dark text-white font-sans overflow-hidden fixed inset-0 pb-safe pt-safe pt-2 overscroll-none select-none">
+        <div 
+            className="h-dvh bg-miami-dark text-white overflow-hidden fixed inset-0 pb-safe pt-safe pt-2 overscroll-none select-none"
+            style={{ fontFamily: `'${systemFont}', system-ui, sans-serif` }}
+        >
             <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-miami-purple/10 via-miami-dark to-miami-dark pointer-events-none" />
 
             <div className="relative z-10 w-full h-full max-w-md mx-auto bg-black/20 backdrop-blur-[2px] shadow-2xl flex flex-col">
