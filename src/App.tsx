@@ -38,11 +38,16 @@ ModuleRegistry.register({
     title: 'Design Studio',     
     icon: (
         <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M12 36V12H36V36H12Z" stroke="currentColor" strokeWidth="1.5" />
-            <path d="M12 12L18 6H42V30L36 36" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            <circle cx="24" cy="24" r="4" stroke="currentColor" strokeWidth="1.5" />
-            <path d="M18 18L30 30" stroke="currentColor" strokeWidth="1" strokeOpacity="0.5" />
-            <path d="M30 18L18 30" stroke="currentColor" strokeWidth="1" strokeOpacity="0.5" />
+            {/* Drafting board surface — angled rectangle */}
+            <rect x="6" y="14" width="36" height="24" rx="2" stroke="currentColor" strokeWidth="1.5" />
+            {/* Horizontal rule line on board */}
+            <line x1="10" y1="26" x2="38" y2="26" stroke="currentColor" strokeWidth="1" strokeOpacity="0.45" strokeDasharray="2 2" />
+            {/* Triangle set-square in bottom-left corner */}
+            <path d="M10 34 L10 20 L22 34 Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+            {/* Pencil — body */}
+            <rect x="28" y="10" width="5" height="18" rx="1" transform="rotate(35 28 10)" stroke="currentColor" strokeWidth="1.5" />
+            {/* Pencil — tip point */}
+            <path d="M37.5 28.5 L40 33 L35.5 31.5 Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
         </svg>
     ), 
     component: StudioModule,          
@@ -65,10 +70,20 @@ ModuleRegistry.register({
     title: 'Macro Studio',      
     icon: (
         <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="10" y="8" width="28" height="32" rx="2" stroke="currentColor" strokeWidth="1.5" />
-            <line x1="16" y1="16" x2="32" y2="16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            <line x1="16" y1="24" x2="32" y2="24" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            <line x1="16" y1="32" x2="24" y2="32" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            {/* Top-left button */}
+            <rect x="6" y="6" width="16" height="16" rx="3" stroke="currentColor" strokeWidth="1.5" />
+            {/* Top-right button — active/highlighted */}
+            <rect x="26" y="6" width="16" height="16" rx="3" stroke="currentColor" strokeWidth="1.5" fill="currentColor" fillOpacity="0.15" />
+            {/* Lightning bolt inside active button */}
+            <path d="M36 9 L33 16 L35.5 16 L32 23 L38 15 L35.5 15 Z" stroke="currentColor" strokeWidth="1" strokeLinejoin="round" fill="currentColor" fillOpacity="0.5" />
+            {/* Bottom-left button */}
+            <rect x="6" y="26" width="16" height="16" rx="3" stroke="currentColor" strokeWidth="1.5" />
+            {/* Bottom-right button */}
+            <rect x="26" y="26" width="16" height="16" rx="3" stroke="currentColor" strokeWidth="1.5" />
+            {/* Small label lines in non-active buttons */}
+            <line x1="10" y1="13" x2="18" y2="13" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeOpacity="0.5" />
+            <line x1="10" y1="33" x2="18" y2="33" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeOpacity="0.5" />
+            <line x1="30" y1="33" x2="38" y2="33" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeOpacity="0.5" />
         </svg>
     ), 
     component: GCodeStudioModule,      
