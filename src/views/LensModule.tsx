@@ -12,6 +12,7 @@ import { InstructionCard } from '../components/ui/InstructionCard';
 import { SectionCard } from '../components/layout/SectionCard';
 import { ActionButton } from '../components/ui/ActionButton';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
+import { TextInput } from '../components/ui/TextInput';
 
 // Canvas dimensions (similar to StudioModule)
 const CW = 480, CH = 300;
@@ -158,7 +159,25 @@ export const LensModule: React.FC = () => {
         if (h) setHealthStatus(h);
     };
 
+    const fetchCalibrationTags = useCallback(async () => {
+        try {
+            const tags = await lensService.getCalibrationTags();
+            if (tags && tags.length > 0) {
+                setCalibrationPoints(tags);
+            }
+        } catch (err) {
+            console.error('Failed to fetch calibration tags', err);
+        }
+    }, []);
+
     useEffect(() => { fetchHealthStatus(); }, [lensApiUrl]);
+
+    // Fetch existing tags when switching to mapping tab or on mount
+    useEffect(() => {
+        if (activeTab === 'mapping') {
+            fetchCalibrationTags();
+        }
+    }, [activeTab, fetchCalibrationTags]);
 
     const startLensSession = async () => {
         setIsLensLoading(true);
@@ -421,33 +440,25 @@ export const LensModule: React.FC = () => {
                                                 </div>
 
                                                 {/* Coordinate + Size Inputs */}
-                                                <div className="flex flex-col gap-2">
-                                                    <div className="relative">
-                                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[9px] text-gray-600 font-bold">X</span>
-                                                        <NumericInput 
-                                                            value={p?.physical_x ?? 0} 
-                                                            onChange={v => addCalibrationPoint(i, v, p?.physical_y ?? 0, anchor, p?.size_mm ?? tagSize)} 
-                                                            className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-xl p-2 pl-6 text-xs font-mono transition-colors" 
-                                                        />
-                                                    </div>
-                                                    <div className="relative">
-                                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[9px] text-gray-600 font-bold">Y</span>
-                                                        <NumericInput 
-                                                            value={p?.physical_y ?? 0} 
-                                                            onChange={v => addCalibrationPoint(i, p?.physical_x ?? 0, v, anchor, p?.size_mm ?? tagSize)} 
-                                                            className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-xl p-2 pl-6 text-xs font-mono transition-colors" 
-                                                        />
-                                                    </div>
-                                                    <div className="relative">
-                                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[9px] text-miami-cyan/70 font-bold">⬛</span>
-                                                        <NumericInput 
-                                                            value={p?.size_mm ?? tagSize} 
-                                                            onChange={v => addCalibrationPoint(i, p?.physical_x ?? 0, p?.physical_y ?? 0, anchor, v)}
-                                                            min={5}
-                                                            className="w-full bg-black border border-gray-700 focus:border-miami-cyan rounded-xl p-2 pl-6 text-xs font-mono transition-colors" 
-                                                        />
-                                                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[8px] text-gray-600 font-bold">mm</span>
-                                                    </div>
+                                                <div className="flex flex-col gap-3">
+                                                    <TextInput 
+                                                        label="Physical X (mm)"
+                                                        inputMode="decimal"
+                                                        value={p?.physical_x ?? 0} 
+                                                        onChange={e => addCalibrationPoint(i, parseFloat(e.target.value) || 0, p?.physical_y ?? 0, anchor, p?.size_mm ?? tagSize)} 
+                                                    />
+                                                    <TextInput 
+                                                        label="Physical Y (mm)"
+                                                        inputMode="decimal"
+                                                        value={p?.physical_y ?? 0} 
+                                                        onChange={e => addCalibrationPoint(i, p?.physical_x ?? 0, parseFloat(e.target.value) || 0, anchor, p?.size_mm ?? tagSize)} 
+                                                    />
+                                                    <TextInput 
+                                                        label="Size (mm)"
+                                                        inputMode="decimal"
+                                                        value={p?.size_mm ?? tagSize} 
+                                                        onChange={e => addCalibrationPoint(i, p?.physical_x ?? 0, p?.physical_y ?? 0, anchor, parseFloat(e.target.value) || 0)}
+                                                    />
                                                 </div>
                                             </div>
                                         );

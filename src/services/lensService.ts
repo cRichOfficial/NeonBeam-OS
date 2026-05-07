@@ -186,6 +186,23 @@ class LensService {
     getLensPreviewUrl() {
         return `${this.baseUrl}/api/lens/calibrate-lens/preview?t=${Date.now()}`;
     }
+
+    async getCalibrationTags(): Promise<CalibrationPoint[]> {
+        const res = await axios.get(`${this.baseUrl}/api/lens/calibration/tags`);
+        const rawTags = res.data?.tags ?? (Array.isArray(res.data) ? res.data : []);
+        
+        // Aggressively normalize backend fields to frontend fields
+        return rawTags.map((t: any, index: number) => {
+            const id = t.id !== undefined ? t.id : (t.tag_id !== undefined ? t.tag_id : index);
+            return {
+                id: Number(id),
+                physical_x: t.physical_x ?? t.machine_x ?? t.x ?? t.pos_x ?? 0,
+                physical_y: t.physical_y ?? t.machine_y ?? t.y ?? t.pos_y ?? 0,
+                size_mm: t.size_mm ?? t.size ?? t.dimension ?? 30,
+                anchor: t.anchor ?? 'center'
+            };
+        });
+    }
 }
 
 export const lensService = new LensService();
