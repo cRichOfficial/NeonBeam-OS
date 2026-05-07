@@ -359,8 +359,8 @@ export const DashboardModule: React.FC = () => {
     }, [layout, macros, macroToAction]);
 
     return (
-        <View title="Machine Control" showHomeButton className="overflow-hidden touch-none overscroll-none">
-        <div className="h-full flex flex-col gap-1 p-2 select-none overflow-hidden touch-none overscroll-none">
+        <View title="Machine Control" showHomeButton className="bg-black">
+        <div className="min-h-full flex flex-col gap-3 p-3 select-none">
 
             {/* ── Row 1: Emergency Stop ───────────────────────────────────── */}
             <button
@@ -436,8 +436,8 @@ export const DashboardModule: React.FC = () => {
                 )}
             </div>
 
-            {/* ── Row 3: Jog control card — takes all remaining vertical space ── */}
-            <div className="flex-1 min-h-0 bg-black/40 border border-gray-800 rounded-2xl p-3 flex flex-col gap-2">
+            {/* ── Row 3: Jog control card ── */}
+            <div className="bg-black/40 border border-gray-800 rounded-2xl p-3 flex flex-col gap-2">
 
                 {/* Jog card header */}
                 <div className="flex items-center justify-between flex-shrink-0">
