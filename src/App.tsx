@@ -162,7 +162,7 @@ function App() {
                             )}
 
                             {/* Module content — dashboard is fixed-height (no scroll); all others scroll */}
-                            <div className={`flex-1 min-h-0 ${mod.id === 'dashboard' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+                            <div className="flex-1 min-h-0 overflow-y-auto">
                                 <ModComp />
                             </div>
                         </div>
