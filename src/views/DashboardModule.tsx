@@ -444,7 +444,7 @@ export const DashboardModule: React.FC = () => {
                     <div className="flex flex-col">
                         <p className="text-[10px] uppercase text-gray-400 font-black tracking-widest">Jog Control</p>
                         {!canJog && (
-                            <p className="text-[8px] font-bold text-red-400/80 font-mono tracking-tight -mt-0.5">
+                            <p className="text-[8px] font-bold text-red-400/80 font-mono -mt-0.5">
                                 {isAlarm ? 'ALARM — LOCK' : isOffline ? 'MCU OFFLINE' : 'JOG BLOCKED'}
                             </p>
                         )}

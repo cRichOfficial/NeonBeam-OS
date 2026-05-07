@@ -46,7 +46,7 @@ export const RadioGroup: React.FC<RadioGroupProps> = ({
                 <button 
                     key={String(opt.value)} 
                     onClick={() => onChange(opt.value)}
-                    className={`px-0.5 py-2 rounded-lg text-[10px] tracking-tighter whitespace-nowrap font-black border transition-all ${getColorClasses(value === opt.value, opt.color)}`}
+                    className={`px-0.5 py-2 rounded-lg text-[10px] whitespace-nowrap font-bold font-[inherit] border transition-all ${getColorClasses(value === opt.value, opt.color)}`}
                 >
                     {opt.label}
                 </button>

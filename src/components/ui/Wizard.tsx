@@ -51,7 +51,7 @@ export const Wizard: React.FC<WizardProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200 font-[inherit]">
             <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={onClose} />
             
             <div className="relative w-full max-w-lg bg-gray-900 border-t sm:border border-gray-800 rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-10 duration-300 flex flex-col max-h-[90vh]">

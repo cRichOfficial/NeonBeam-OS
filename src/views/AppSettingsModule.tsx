@@ -114,12 +114,25 @@ const DiscoverySheet: React.FC<{
     );
 };
 
+/** Extract font family names from a Google Fonts URL */
+function parseGoogleFonts(url: string): string[] {
+    try {
+        const u = new URL(url);
+        // Supports both css?family=Name and css2?family=Name:wght@...
+        const families = u.searchParams.getAll('family');
+        return families.map(f => f.split(':')[0].replace(/\+/g, ' '));
+    } catch {
+        return [];
+    }
+}
+
 const FontPicker: React.FC<{
     current: string;
     onSelect: (font: string) => void;
     onClose: () => void;
-}> = ({ current, onSelect, onClose }) => {
-    const fonts = [
+    importedUrls: string[];
+}> = ({ current, onSelect, onClose, importedUrls }) => {
+    const defaultFonts = [
         'Anta',
         'Audiowide',
         'Jaro',
@@ -127,13 +140,16 @@ const FontPicker: React.FC<{
         'Wallpoet'
     ];
 
+    const importedFonts = Array.from(new Set(importedUrls.flatMap(parseGoogleFonts)));
+    const allFonts = [...defaultFonts, ...importedFonts];
+
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-6">
             <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
             <div className="relative w-full max-w-sm bg-miami-dark border border-gray-700 rounded-[2rem] p-6 shadow-2xl animate-in zoom-in-95 fade-in duration-200">
                 <h3 className="text-miami-cyan font-black text-sm uppercase tracking-widest mb-6 text-center">Select System Font</h3>
                 <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1 custom-scrollbar">
-                    {fonts.map(font => (
+                    {allFonts.map(font => (
                         <button
                             key={font}
                             onClick={() => { onSelect(font); onClose(); }}
@@ -159,6 +175,49 @@ const FontPicker: React.FC<{
     );
 };
 
+const ImportFontWizard: React.FC<{
+    onImport: (url: string) => void;
+    onClose: () => void;
+}> = ({ onImport, onClose }) => {
+    const [url, setUrl] = useState('');
+
+    return (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-6">
+            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+            <div className="relative w-full max-w-sm bg-miami-dark border border-gray-700 rounded-[2rem] p-6 shadow-2xl animate-in zoom-in-95 fade-in duration-200">
+                <h3 className="text-miami-cyan font-black text-sm uppercase tracking-widest mb-2 text-center">Import Google Font</h3>
+                <p className="text-[10px] text-gray-500 text-center mb-6 px-4">Paste a Google Fonts CSS URL to add new families to your system.</p>
+                
+                <div className="space-y-4">
+                    <input
+                        type="text"
+                        value={url}
+                        onChange={(e) => setUrl(e.target.value)}
+                        placeholder="https://fonts.googleapis.com/css2?family=..."
+                        className="w-full bg-black/40 border border-gray-700 focus:border-miami-cyan rounded-xl p-4 text-white text-xs font-mono outline-none transition-colors"
+                    />
+                    
+                    <ActionButton 
+                        variant="normal" 
+                        className="w-full py-4 text-xs"
+                        disabled={!url.includes('fonts.googleapis.com')}
+                        onClick={() => { onImport(url); onClose(); }}
+                    >
+                        Load Font families
+                    </ActionButton>
+                    
+                    <button
+                        onClick={onClose}
+                        className="w-full py-3.5 text-gray-500 hover:text-gray-300 text-[10px] font-black uppercase tracking-widest transition-colors"
+                    >
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 // ── Main component ────────────────────────────────────────────────────────────
 export const AppSettingsModule: React.FC = () => {
     const { settings, updateSettings } = useAppSettingsStore();
@@ -172,6 +231,7 @@ export const AppSettingsModule: React.FC = () => {
     const [forceCustomSvg, setForceCustomSvg] = useState(false);
     const [forceCustomBitmap, setForceCustomBitmap] = useState(false);
     const [showFontPicker, setShowFontPicker] = useState(false);
+    const [showFontImportWizard, setShowFontImportWizard] = useState(false);
 
     const isSvgCustom = forceCustomSvg || ![72, 96, 150, 300].includes(settings.svgDpi);
     const activeSvgRadio = isSvgCustom ? 'custom' : settings.svgDpi;
@@ -355,6 +415,43 @@ export const AppSettingsModule: React.FC = () => {
                     </div>
                 </SectionCard>
 
+                {/* ── Font Imports ────────────────────────────────────────── */}
+                <SectionCard 
+                    title="Font Imports"
+                    action={
+                        <ActionButton 
+                            variant="normal" 
+                            className="py-1.5 px-3 text-xs"
+                            onClick={() => setShowFontImportWizard(true)}
+                        >
+                            Add Fonts
+                        </ActionButton>
+                    }
+                >
+                    <div className="space-y-3">
+                        {settings.googleFontUrls.length === 0 ? (
+                            <p className="text-[10px] text-gray-500 italic text-center py-2">No custom fonts imported.</p>
+                        ) : (
+                            settings.googleFontUrls.map(url => (
+                                <div key={url} className="flex items-center justify-between bg-black/40 border border-gray-800 rounded-xl px-3 py-2">
+                                    <div className="flex-1 min-w-0 pr-4">
+                                        <p className="text-[10px] text-miami-cyan font-bold truncate">{parseGoogleFonts(url).join(', ') || 'Unknown Fonts'}</p>
+                                        <p className="text-[8px] text-gray-600 truncate font-mono">{url}</p>
+                                    </div>
+                                    <button 
+                                        onClick={() => {
+                                            updateSettings({ googleFontUrls: settings.googleFontUrls.filter(u => u !== url) });
+                                        }}
+                                        className="p-2 text-gray-600 hover:text-neon-red transition-colors"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </SectionCard>
+
                 {/* ── Laser Configuration ──────────────────────────────────── */}
                 <SectionCard title="Laser Configuration">
                     <div className="grid grid-cols-2 gap-4">
@@ -484,6 +581,17 @@ export const AppSettingsModule: React.FC = () => {
                     current={settings.systemFont}
                     onSelect={(f) => updateSettings({ systemFont: f })}
                     onClose={() => setShowFontPicker(false)}
+                    importedUrls={settings.googleFontUrls}
+                />
+            )}
+
+            {showFontImportWizard && (
+                <ImportFontWizard
+                    onClose={() => setShowFontImportWizard(false)}
+                    onImport={(url) => {
+                        const next = [...settings.googleFontUrls, url];
+                        updateSettings({ googleFontUrls: Array.from(new Set(next)) });
+                    }}
                 />
             )}
         </View>

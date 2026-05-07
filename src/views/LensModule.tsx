@@ -417,7 +417,7 @@ export const LensModule: React.FC = () => {
                                         return (
                                             <div key={i} className="flex flex-col gap-3 bg-black/60 p-3 rounded-2xl border border-gray-800 relative overflow-hidden">
                                                 <div className="flex justify-between items-center mb-1">
-                                                    <span className="text-[10px] font-black text-gray-500 uppercase tracking-tighter">Tag ID</span>
+                                                    <span className="text-[10px] font-black text-gray-500 uppercase">Tag ID</span>
                                                     <span className="text-sm font-black text-miami-cyan">{i}</span>
                                                 </div>
 
@@ -551,7 +551,7 @@ export const LensModule: React.FC = () => {
                                         {/* Zone Grid */}
                                         <div className="grid grid-cols-3 gap-1">
                                             {['top-left', 'top-center', 'top-right', 'center-left', 'center', 'center-right', 'bottom-left', 'bottom-center', 'bottom-right'].map(zone => (
-                                                <div key={zone} className={`h-8 rounded flex items-center justify-center text-[8px] font-bold uppercase tracking-tight transition-all ${
+                                                <div key={zone} className={`h-8 rounded flex items-center justify-center text-[8px] font-bold uppercase transition-all ${
                                                     lensSession.zones_covered.includes(zone)
                                                         ? 'bg-miami-cyan/20 text-miami-cyan border border-miami-cyan/30'
                                                         : 'bg-black/40 text-gray-600 border border-gray-800'
@@ -617,7 +617,7 @@ export const LensModule: React.FC = () => {
                                                         }`}>
                                                             {covered
                                                                 ? <span className="text-emerald-400 text-lg font-black drop-shadow">✓</span>
-                                                                : <span className="text-white/30 text-[9px] font-bold uppercase tracking-tighter text-center leading-tight px-1">{zone.replace('-', ' ')}</span>
+                                                                : <span className="text-white/30 text-[9px] font-bold uppercase text-center leading-tight px-1">{zone.replace('-', ' ')}</span>
                                                             }
                                                         </div>
                                                     );

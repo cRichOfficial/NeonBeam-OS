@@ -11,8 +11,9 @@
   --color-neon-red:     #ff4d6d;
   --color-neon-orange:  #ff5f1f;
 
-  --font-sans: var(--app-font, 'Anta'), system-ui, sans-serif;
-  --font-display: 'Audiowide', cursive;
+  --font-sans:    var(--app-font, 'Anta'), system-ui, sans-serif;
+  --font-display: var(--app-font, 'Anta'), system-ui, sans-serif;
+  --font-mono:    var(--app-font, 'Anta'), ui-monospace, monospace;
 
   /*
    * Slightly larger text for readability on mobile screens.
@@ -39,10 +40,10 @@
   --color-gray-100: #f1f4f7;
   --color-gray-200: #dce2e8;
   --color-gray-300: #c4cdd6;
-  --color-gray-400: #b0b8c4;
-  --color-gray-500: #8b95a1;
-  --color-gray-600: #5f6b7a;
-  --color-gray-700: #455060;
+  --color-gray-400: #cbd5e1;
+  --color-gray-500: #a1aab7;
+  --color-gray-600: #717d8e;
+  --color-gray-700: #526071;
   --color-gray-800: #28333f;
   --color-gray-900: #16202a;
   --color-gray-950: #0d161f;
@@ -55,6 +56,18 @@ body {
   padding: 0;
   /* Prevent iOS bounce scroll on the body */
   overscroll-behavior: none;
+  /* Enforce system font globally */
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: geometricPrecision;
+}
+
+/* Ensure all interactive elements inherit the user-selected app font.
+ * Browsers (especially Chrome/Safari) reset font-family on button, input,
+ * select, and textarea to system-ui by default, ignoring parent inheritance. */
+button, input, select, textarea {
+  font-family: var(--font-sans);
 }
 
 /* iOS safe-area utilities */

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useTelemetry } from './hooks/useTelemetry';
 import { ModuleRegistry } from './core/ModuleRegistry';
 import { useNavigationStore } from './store/navigationStore';
@@ -169,6 +169,33 @@ function App() {
         return useAppSettingsStore.persist.onFinishHydration(() => setIsHydrated(true));
     }, []);
 
+    const googleFontUrls = useAppSettingsStore(s => s.settings.googleFontUrls);
+    const systemFont     = useAppSettingsStore(s => s.settings.systemFont);
+    const debugMode      = useAppSettingsStore(s => s.settings.debugMode);
+
+    // Dynamic Font Loader — injects Google Fonts <link> tags based on settings
+    useEffect(() => {
+        // Clear existing dynamic font links
+        const existing = document.querySelectorAll('link[data-dynamic-font="true"]');
+        existing.forEach(el => el.remove());
+
+        // Add new links
+        googleFontUrls.forEach(url => {
+            if (!url.startsWith('https://fonts.googleapis.com')) return;
+            const fontUrl = url.includes('display=') ? url : `${url}${url.includes('?') ? '&' : '?'}display=swap`;
+            const link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = fontUrl;
+            link.dataset.dynamicFont = "true";
+            document.head.appendChild(link);
+        });
+    }, [googleFontUrls]);
+
+    // System Font Sync — ensures the CSS variable is available globally (including portals)
+    useEffect(() => {
+        document.documentElement.style.setProperty('--app-font', `'${systemFont}'`);
+    }, [systemFont]);
+
     const wsUrl = React.useMemo(() => {
         let url = coreApiUrl;
         
@@ -196,17 +223,18 @@ function App() {
     const navigateTo     = useNavigationStore(s => s.navigateTo);
     const navigateHome   = useNavigationStore(s => s.navigateHome);
     const modules = ModuleRegistry.getModules();
-    const debugMode = useAppSettingsStore(s => s.settings.debugMode);
-    const systemFont = useAppSettingsStore(s => s.settings.systemFont);
 
     return (
         <div 
             className="h-dvh bg-miami-dark text-white overflow-hidden fixed inset-0 pb-safe pt-safe pt-2 overscroll-none select-none"
-            style={{ fontFamily: `'${systemFont}', system-ui, sans-serif` }}
+            style={{ 
+                fontFamily: `'${systemFont}', system-ui, sans-serif`,
+                ['--app-font' as any]: `'${systemFont}'`
+            }}
         >
             <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-miami-purple/10 via-miami-dark to-miami-dark pointer-events-none" />
 
-            <div className="relative z-10 w-full h-full max-w-md mx-auto bg-black/20 backdrop-blur-[2px] shadow-2xl flex flex-col">
+            <div className="relative z-10 w-full h-full max-w-md mx-auto bg-black/20 shadow-2xl flex flex-col">
 
                 {/* ── Home Screen ──────────────────────────────────────────────
                     Hidden (not unmounted) when a module is active.

@@ -240,7 +240,7 @@ export const PlaceWithLensModal: React.FC<PlaceWithLensModalProps> = ({
                     <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M11 4L6 9L11 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                 </button>
                 <div className="flex-1 min-w-0">
-                    <p className="text-sm font-black text-miami-cyan tracking-tight">Place with Lens</p>
+                    <p className="text-sm font-black text-miami-cyan">Place with Lens</p>
                     <p className="text-[10px] text-gray-500 font-mono">
                         {lensDetections.length > 0
                             ? `${lensDetections.length} object${lensDetections.length !== 1 ? 's' : ''} detected — tap to select`

@@ -31,6 +31,7 @@ export interface AppSettings {
     lensApiUrl: string;
     debugMode: boolean;
     systemFont: string;
+    googleFontUrls: string[];
 }
 
 interface AppSettingsStore {
@@ -68,6 +69,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     lensApiUrl: import.meta.env.VITE_VISION_API_URL || '',
     debugMode: false,
     systemFont: 'Anta',
+    googleFontUrls: [],
 };
 
 export const useAppSettingsStore = create<AppSettingsStore>()(
