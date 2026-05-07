@@ -29,6 +29,7 @@ export interface AppSettings {
     // Network — runtime-editable, persisted to localStorage
     coreApiUrl: string;
     lensApiUrl: string;
+    debugMode: boolean;
 }
 
 interface AppSettingsStore {
@@ -64,6 +65,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     // or empty strings if not provided.
     coreApiUrl: import.meta.env.VITE_COMM_API_URL || '',
     lensApiUrl: import.meta.env.VITE_VISION_API_URL || '',
+    debugMode: false,
 };
 
 export const useAppSettingsStore = create<AppSettingsStore>()(

@@ -33,9 +33,47 @@ ModuleRegistry.register({
     isCore: true,
 });
 
-ModuleRegistry.register({ id: 'studio',           title: 'Design Studio',     icon: '🎨', component: StudioModule,          isCore: true });
-ModuleRegistry.register({ id: 'material_presets',  title: 'Material Presets',  icon: '🔥', component: MaterialPresetsModule,  isCore: true });
-ModuleRegistry.register({ id: 'gcode_studio',      title: 'Macro Studio',      icon: '📝', component: GCodeStudioModule,      isCore: true });
+ModuleRegistry.register({ 
+    id: 'studio',           
+    title: 'Design Studio',     
+    icon: (
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 36V12H36V36H12Z" stroke="currentColor" strokeWidth="1.5" />
+            <path d="M12 12L18 6H42V30L36 36" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            <circle cx="24" cy="24" r="4" stroke="currentColor" strokeWidth="1.5" />
+            <path d="M18 18L30 30" stroke="currentColor" strokeWidth="1" strokeOpacity="0.5" />
+            <path d="M30 18L18 30" stroke="currentColor" strokeWidth="1" strokeOpacity="0.5" />
+        </svg>
+    ), 
+    component: StudioModule,          
+    isCore: true 
+});
+ModuleRegistry.register({ 
+    id: 'material_presets',  
+    title: 'Material Presets',  
+    icon: (
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M24 8C16 16 14 24 14 28C14 34.6274 18.4772 40 24 40C29.5228 40 34 34.6274 34 28C34 24 32 16 24 8Z" stroke="currentColor" strokeWidth="1.5" />
+            <path d="M24 20C20 24 19 28 19 30C19 33.3137 21.2386 36 24 36C26.7614 36 29 33.3137 29 30C29 28 28 24 24 20Z" fill="currentColor" fillOpacity="0.5" />
+        </svg>
+    ), 
+    component: MaterialPresetsModule,  
+    isCore: true 
+});
+ModuleRegistry.register({ 
+    id: 'gcode_studio',      
+    title: 'Macro Studio',      
+    icon: (
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="10" y="8" width="28" height="32" rx="2" stroke="currentColor" strokeWidth="1.5" />
+            <line x1="16" y1="16" x2="32" y2="16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            <line x1="16" y1="24" x2="32" y2="24" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            <line x1="16" y1="32" x2="24" y2="32" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+    ), 
+    component: GCodeStudioModule,      
+    isCore: true 
+});
 
 ModuleRegistry.register({
     id: 'lens',
@@ -52,9 +90,54 @@ ModuleRegistry.register({
     isCore: true,
 });
 
-ModuleRegistry.register({ id: 'machine_settings',  title: 'Machine Config',    icon: '⚙️', component: MachineSettingsModule,  isCore: true });
-ModuleRegistry.register({ id: 'app_settings',      title: 'App Settings',      icon: '🎛️', component: AppSettingsModule,      isCore: true });
-ModuleRegistry.register({ id: 'ui_demo',           title: 'UI Demo',           icon: '🎨', component: DemoModule,             isCore: true });
+ModuleRegistry.register({ 
+    id: 'machine_settings',  
+    title: 'Machine Config',    
+    icon: (
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="24" cy="24" r="6" stroke="currentColor" strokeWidth="1.5" />
+            <path d="M24 10V14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            <path d="M24 34V38" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            <path d="M10 24H14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            <path d="M34 24H38" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            <path d="M14.1 14.1L16.9 16.9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            <path d="M31.1 31.1L33.9 33.9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            <path d="M14.1 33.9L16.9 31.1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            <path d="M31.1 16.9L33.9 14.1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+    ), 
+    component: MachineSettingsModule,  
+    isCore: true 
+});
+ModuleRegistry.register({ 
+    id: 'app_settings',      
+    title: 'App Settings',      
+    icon: (
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <line x1="12" y1="10" x2="12" y2="38" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            <line x1="24" y1="10" x2="24" y2="38" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            <line x1="36" y1="10" x2="36" y2="38" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            <rect x="8" y="28" width="8" height="4" rx="1" fill="currentColor" />
+            <rect x="20" y="16" width="8" height="4" rx="1" fill="currentColor" />
+            <rect x="32" y="32" width="8" height="4" rx="1" fill="currentColor" />
+        </svg>
+    ), 
+    component: AppSettingsModule,      
+    isCore: true 
+});
+ModuleRegistry.register({ 
+    id: 'ui_demo',           
+    title: 'UI Demo',           
+    icon: (
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M10 24C10 24 16 14 24 14C32 14 38 24 38 24C38 24 32 34 24 34C16 34 10 24 10 24Z" stroke="currentColor" strokeWidth="1.5" />
+            <circle cx="24" cy="24" r="5" stroke="currentColor" strokeWidth="1.5" />
+            <circle cx="24" cy="24" r="2" fill="currentColor" />
+        </svg>
+    ), 
+    component: DemoModule,             
+    isCore: true 
+});
 
 // ── App ───────────────────────────────────────────────────────────────────────
 
@@ -105,6 +188,7 @@ function App() {
     const navigateTo     = useNavigationStore(s => s.navigateTo);
     const navigateHome   = useNavigationStore(s => s.navigateHome);
     const modules = ModuleRegistry.getModules();
+    const debugMode = useAppSettingsStore(s => s.settings.debugMode);
 
     return (
         <div className="h-dvh bg-miami-dark text-white font-sans overflow-hidden fixed inset-0 pb-safe pt-safe pt-2 overscroll-none select-none">
@@ -121,14 +205,17 @@ function App() {
                 }`}>
                     <View title="NEONBEAM OS" subtitle="Select a module to begin">
                         <div className="p-4 grid grid-cols-2 gap-4">
-                            {modules.map(mod => (
-                                <ModuleIcon
-                                    key={mod.id}
-                                    label={mod.title}
-                                    icon={mod.icon}
-                                    onClick={() => navigateTo(mod.id)}
-                                />
-                            ))}
+                            {modules
+                                .filter(mod => mod.id !== 'ui_demo' || debugMode)
+                                .map(mod => (
+                                    <ModuleIcon
+                                        key={mod.id}
+                                        label={mod.title}
+                                        icon={mod.icon}
+                                        onClick={() => navigateTo(mod.id)}
+                                    />
+                                ))
+                            }
                         </div>
                     </View>
                 </div>

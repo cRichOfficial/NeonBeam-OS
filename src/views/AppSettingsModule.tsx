@@ -392,6 +392,24 @@ export const AppSettingsModule: React.FC = () => {
                         URLs are saved locally. Changes take effect immediately — no restart needed.
                     </p>
                 </SectionCard>
+
+                {/* ── Developer Options ────────────────────────────────────── */}
+                <SectionCard title="Developer Options">
+                    <div className="flex items-center justify-between py-3">
+                        <div>
+                            <span className="block text-sm font-medium text-gray-200">Debug Mode</span>
+                            <span className="block text-[10px] text-gray-500 mt-0.5">Show internal sandbox modules</span>
+                        </div>
+                        <SegmentedControl
+                            options={[
+                                { value: false, label: 'OFF' },
+                                { value: true, label: 'ON' }
+                            ]}
+                            value={settings.debugMode}
+                            onChange={(val) => updateSettings({ debugMode: val as boolean })}
+                        />
+                    </div>
+                </SectionCard>
             </div>
 
             {/* ── Discovery result sheet (bottom drawer) ───────────────── */}
