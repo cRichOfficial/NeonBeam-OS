@@ -228,9 +228,23 @@ export function generateMultiOpGCode(opts: MultiOpGCodeOptions): string {
             if (!canvas) {
                 out.push('; WARNING: Raster operation requested but no canvas provided.');
             } else {
-                const ctx = canvas.getContext('2d')!;
+                const ctx = canvas.getContext('2d');
                 const w = canvas.width, h = canvas.height;
+                out.push(`; Canvas: ${w}x${h}px  LineDistance: ${op.params.lineDistance}mm`);
+
+                if (!ctx || w === 0 || h === 0) {
+                    out.push('; WARNING: Raster canvas has zero dimensions or invalid context, skipping.');
+                } else {
                 const { data } = ctx.getImageData(0, 0, w, h);
+
+                // Diagnostic: sample key pixels to verify canvas content
+                const samplePts: [number, number][] = [[0, 0], [w >> 1, h >> 1], [w - 1, h - 1], [w >> 2, h >> 2]];
+                const samples = samplePts.map(([sx, sy]) => {
+                    const idx = (sy * w + sx) * 4;
+                    return `(${sx},${sy})R=${data[idx]}`;
+                }).join(' ');
+                out.push(`; PixelSamples: ${samples}`);
+
                 const pixelLum = (px: number, row: number) => data[(row * w + px) * 4];
                 const pixelS = (px: number, row: number): number => {
                     const lum = pixelLum(px, row);
@@ -240,7 +254,9 @@ export function generateMultiOpGCode(opts: MultiOpGCodeOptions): string {
                 };
                 const isDark = (px: number, row: number) => pixelLum(px, row) < 128;
                 const xToMm = (px: number) => posX + (px / Math.max(w - 1, 1)) * widthMm;
-                const nLines = Math.ceil(heightMm / op.params.lineDistance);
+                const lineDistance = (op.params.lineDistance > 0 && isFinite(op.params.lineDistance))
+                    ? op.params.lineDistance : 0.1;
+                const nLines = Math.ceil(heightMm / lineDistance);
                 const marginPx = Math.round((op.params.margin / Math.max(widthMm, 0.001)) * w);
 
                 out.push('M4 ; dynamic laser mode');
@@ -249,7 +265,7 @@ export function generateMultiOpGCode(opts: MultiOpGCodeOptions): string {
                 for (let pass = 0; pass < op.params.passes; pass++) {
                     if (op.params.passes > 1) out.push(`; Pass ${pass + 1}/${op.params.passes}`);
                     for (let li = 0; li < nLines; li++) {
-                        const yMm = posY + heightMm - li * op.params.lineDistance;
+                        const yMm = posY + heightMm - li * lineDistance;
                         const pixRow = Math.min(h - 1, Math.floor((li / nLines) * h));
                         const ltr = li % 2 === 0;
                         const segs: { a: number; b: number }[] = [];
@@ -276,10 +292,11 @@ export function generateMultiOpGCode(opts: MultiOpGCodeOptions): string {
                         out.push('G1 S0');
                     }
                 }
+                } // end ctx/dimension guard
             }
         } else if (op.opType === 'fill') {
             // Shape-aware hatch fill using an off-screen canvas mask
-            out.push('M4 ; dynamic laser mode');
+            out.push('M3 ; constant laser mode');
             out.push(`F${op.params.rate}`);
 
             // 1. Find combined bounding box of all elements in SVG units (respecting transforms)
@@ -385,7 +402,7 @@ export function generateMultiOpGCode(opts: MultiOpGCodeOptions): string {
             }
         } else {
             // Vector cut: sample path using getPointAtLength + getCTM
-            out.push('M4 ; dynamic laser mode');
+            out.push('M3 ; constant laser mode');
             out.push(`F${op.params.rate}`);
 
             for (let pass = 0; pass < op.params.passes; pass++) {

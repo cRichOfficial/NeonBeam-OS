@@ -41,12 +41,12 @@ export const RadioGroup: React.FC<RadioGroupProps> = ({
     };
 
     return (
-        <div className={`grid grid-cols-2 gap-2 ${className}`}>
+        <div className={`gap-2 ${!(className.includes('grid') || className.includes('flex')) ? 'grid grid-cols-2' : ''} ${className}`}>
             {options.map((opt) => (
                 <button 
                     key={String(opt.value)} 
                     onClick={() => onChange(opt.value)}
-                    className={`px-2 py-2 rounded-lg text-[10px] whitespace-nowrap font-black border transition-all ${getColorClasses(value === opt.value, opt.color)}`}
+                    className={`px-0.5 py-2 rounded-lg text-[10px] tracking-tighter whitespace-nowrap font-black border transition-all ${getColorClasses(value === opt.value, opt.color)}`}
                 >
                     {opt.label}
                 </button>

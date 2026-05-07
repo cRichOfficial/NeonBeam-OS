@@ -121,7 +121,7 @@ export function generateSvgGCode(opts: SvgGCodeOptions): string {
 
     if (op === 'fill') {
         // Boustrophedon hatch fill across bounding box
-        out.push('M4 ; dynamic laser mode'); out.push(`F${params.rate}`);
+        out.push('M3 ; constant laser mode'); out.push(`F${params.rate}`);
         for (let pass = 0; pass < params.passes; pass++) {
             if (params.passes > 1) out.push(`; --- Pass ${pass + 1} / ${params.passes} ---`);
             const nLines = Math.ceil(heightMm / params.lineDistance);
@@ -137,7 +137,7 @@ export function generateSvgGCode(opts: SvgGCodeOptions): string {
         }
     } else {
         // Vector cut (on-path / inside / outside)
-        out.push('M4 ; dynamic laser'); out.push(`F${params.rate}`);
+        out.push('M3 ; constant laser'); out.push(`F${params.rate}`);
         for (let pass = 0; pass < params.passes; pass++) {
             if (params.passes > 1) out.push(`; --- Pass ${pass + 1} / ${params.passes} ---`);
             for (const path of paths) {

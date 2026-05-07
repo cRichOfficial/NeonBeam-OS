@@ -663,6 +663,25 @@ export const StudioModule: React.FC = () => {
 
             const { w: widthMm, h: heightMm } = physSize();
             
+            // Build a fresh CPU-readable raster canvas from the source image.
+            // Re-drawing at generation time with willReadFrequently:true ensures
+            // getImageData() returns actual pixel data (avoids GPU-side canvas taint).
+            let rasterCanvas: HTMLCanvasElement | undefined;
+            if (fileKind === 'bitmap' && designImgRef.current) {
+                const img = designImgRef.current;
+                const MAX = 800;
+                const aspect = img.naturalWidth / img.naturalHeight;
+                const sw = aspect >= 1 ? MAX : Math.round(MAX * aspect);
+                const sh = aspect >= 1 ? Math.round(MAX / aspect) : MAX;
+                const fresh = document.createElement('canvas');
+                fresh.width = sw; fresh.height = sh;
+                const fctx = fresh.getContext('2d', { willReadFrequently: true })!;
+                fctx.fillStyle = '#ffffff';
+                fctx.fillRect(0, 0, sw, sh);
+                fctx.drawImage(img, 0, 0, sw, sh);
+                rasterCanvas = applyDither(fresh, ditherMethod);
+            }
+
             const gcode = generateMultiOpGCode({
                 svgText: svgTextRef.current || '',
                 operations,
@@ -671,7 +690,7 @@ export const StudioModule: React.FC = () => {
                 widthMm,
                 heightMm,
                 rotation,
-                rasterCanvas: ditheredRef.current || srcCanvasRef.current || undefined
+                rasterCanvas,
             });
 
             if (!gcode) return;
@@ -1048,6 +1067,7 @@ export const StudioModule: React.FC = () => {
                                                 }
                                             }}
                                             accentColor="cyan"
+                                            className="grid grid-cols-3 sm:grid-cols-5 w-full"
                                         />
                                     </div>
                                     {showCustomDpi && (

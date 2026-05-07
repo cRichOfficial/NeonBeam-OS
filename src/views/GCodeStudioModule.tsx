@@ -103,11 +103,13 @@ export const GCodeStudioModule: React.FC = () => {
         if (!formLabel.trim() || !formGcode.trim()) return;
 
         const color = mapThemeToColor(formTheme);
+        const gcodeUpper = formGcode.toUpperCase();
+
         if (editId) {
             // Note: We don't pass isToggle and gcodeOff anymore since we removed the feature
-            editMacro(editId, formLabel, formGcode, color);
+            editMacro(editId, formLabel, gcodeUpper, color);
         } else {
-            addMacro(formLabel, formGcode, color);
+            addMacro(formLabel, gcodeUpper, color);
         }
         setWizardOpen(false);
     };
@@ -220,10 +222,10 @@ export const GCodeStudioModule: React.FC = () => {
                                 <label className="block text-[10px] text-gray-500 mb-2 uppercase font-bold tracking-widest">GCode Sequence</label>
                                 <textarea
                                     value={formGcode}
-                                    onChange={e => setFormGcode(e.target.value.toUpperCase())}
+                                    onChange={e => setFormGcode(e.target.value)}
                                     placeholder="e.g. M8"
                                     rows={5}
-                                    className="w-full bg-miami-cyan/10 border border-miami-cyan/50 focus:border-miami-cyan rounded-lg p-3 text-white text-sm font-mono outline-none transition-colors resize-none"
+                                    className="w-full bg-miami-cyan/10 border border-miami-cyan/50 focus:border-miami-cyan rounded-lg p-3 text-white text-sm font-mono outline-none transition-colors resize-none uppercase"
                                 />
                                 <p className="text-[10px] text-gray-500 mt-2">Separate multiple commands with newlines.</p>
                             </div>
