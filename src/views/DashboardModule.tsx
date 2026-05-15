@@ -142,6 +142,8 @@ export const DashboardModule: React.FC = () => {
     const [liveJogLoading, setLiveJogLoading] = useState(false);
     const [jogError,       setJogError]       = useState<string | null>(null);
     const [isTestingLaser, setIsTestingLaser] = useState(false);
+    const [showGCodeModal, setShowGCodeModal] = useState(false);
+    const [manualGCode,    setManualGCode]    = useState('');
 
     // ── On mount & resume: sync settings and recover any in-progress job ──────
     useEffect(() => {
@@ -598,7 +600,45 @@ export const DashboardModule: React.FC = () => {
                 </button>
             </div>
 
+            {/* ── Row 5: Manual Gcode ─────────────────────────────────── */}
+            <div className="flex-shrink-0">
+                <button onClick={() => setShowGCodeModal(true)}
+                    className="w-full py-3.5 bg-gray-900/60 border border-gray-800 text-gray-400 font-black text-xs uppercase tracking-wide rounded-xl hover:bg-gray-800 hover:text-white active:scale-95 transition-all">
+                    ⌨ Manual GCode
+                </button>
+            </div>
+
         </div>
+
+        {/* ── Manual GCode Modal ── */}
+        {showGCodeModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                <div className="bg-[#111] border border-gray-800 rounded-2xl w-full max-w-md p-5 flex flex-col gap-4 shadow-2xl">
+                    <div className="flex justify-between items-center">
+                        <h3 className="text-miami-cyan font-black tracking-widest uppercase">Manual GCode</h3>
+                        <button onClick={() => setShowGCodeModal(false)} className="text-gray-500 hover:text-white transition-colors">✕</button>
+                    </div>
+                    <textarea
+                        value={manualGCode}
+                        onChange={e => setManualGCode(e.target.value)}
+                        placeholder="G0 X10 Y10..."
+                        className="w-full h-32 bg-black border border-gray-800 rounded-xl p-3 text-white font-mono text-sm outline-none focus:border-miami-cyan resize-none"
+                    />
+                    <button
+                        onClick={() => {
+                            if (manualGCode.trim()) {
+                                sendCommand(manualGCode);
+                                setManualGCode('');
+                                setShowGCodeModal(false);
+                            }
+                        }}
+                        className="w-full py-3 bg-miami-cyan text-black font-black uppercase tracking-wide rounded-xl hover:bg-[#00f0ff] active:scale-95 transition-all"
+                    >
+                        Send Command
+                    </button>
+                </div>
+            </div>
+        )}
         </View>
     );
 };
