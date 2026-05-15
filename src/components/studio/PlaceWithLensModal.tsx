@@ -15,6 +15,8 @@ export interface PlaceWithLensModalProps {
     initialPosY?: number;
     initialScalePct?: number;
     fileKind?: 'svg' | 'bitmap' | null;
+    imgSrc?: string;
+    svgXml?: string;
 }
 
 export const PlaceWithLensModal: React.FC<PlaceWithLensModalProps> = ({
@@ -26,9 +28,22 @@ export const PlaceWithLensModal: React.FC<PlaceWithLensModalProps> = ({
     initialPosX = 0,
     initialPosY = 0,
     initialScalePct = 100,
-    fileKind
+    fileKind,
+    imgSrc,
+    svgXml
 }) => {
     const { settings } = useAppSettingsStore();
+    const [designImg, setDesignImg] = useState<HTMLImageElement | null>(null);
+
+    useEffect(() => {
+        if (imgSrc) {
+            const img = new Image();
+            img.onload = () => setDesignImg(img);
+            img.src = imgSrc;
+        } else {
+            setDesignImg(null);
+        }
+    }, [imgSrc]);
     const mmW = settings.machineWidth;
     const mmH = settings.machineHeight;
     const major = settings.gridMajorSpacing;
@@ -42,6 +57,9 @@ export const PlaceWithLensModal: React.FC<PlaceWithLensModalProps> = ({
     const [lensRotOffset, setLensRotOffset] = useState(0);   // extra °
     const [lensRotStep, setLensRotStep] = useState(90);  // rotation increment
     const [lensIsDetecting, setLensIsDetecting] = useState(false);
+    const [lensObjectHeight, setLensObjectHeight] = useState(0);
+    const [lensThresholdOffset, setLensThresholdOffset] = useState(0);
+    const [lensErosion, setLensErosion] = useState(1);
     
     // Controlled pan/zoom state for WorkspaceGrid
     const [zoom, setZoom] = useState(1);
@@ -65,30 +83,104 @@ export const PlaceWithLensModal: React.FC<PlaceWithLensModalProps> = ({
         return () => observer.disconnect();
     }, [isOpen]);
 
+    const getDetGeometry = useCallback((d: DetectionResult) => {
+        let cx = 0, cy = 0, w = 10, h = 10;
+        if (d.points && d.points.length > 0) {
+            const xs = d.points.map(p => p.x);
+            const ys = d.points.map(p => p.y);
+            const minX = Math.min(...xs), maxX = Math.max(...xs);
+            const minY = Math.min(...ys), maxY = Math.max(...ys);
+            cx = (minX + maxX) / 2;
+            cy = (minY + maxY) / 2;
+            w = maxX - minX;
+            h = maxY - minY;
+        } else if (d.box) {
+            cx = d.box[0] + d.box[2] / 2;
+            cy = d.box[1] + d.box[3] / 2;
+            w = d.box[2];
+            h = d.box[3];
+        } else {
+            cx = d.center_x ?? 0;
+            cy = d.center_y ?? 0;
+        }
+
+        if (d.corners && d.corners.length >= 4) {
+            const c = d.corners;
+            const edge0 = Math.hypot(c[1].x - c[0].x, c[1].y - c[0].y);
+            const edge1 = Math.hypot(c[2].x - c[1].x, c[2].y - c[1].y);
+            w = Math.max(edge0, edge1);
+            h = Math.min(edge0, edge1);
+        }
+
+        return { cx, cy, w, h };
+    }, []);
+
+    const stateRef = useRef({ 
+        selectedDetId, 
+        lensObjectHeight, 
+        lensThresholdOffset, 
+        lensErosion,
+        lensDetections
+    });
+    useEffect(() => {
+        stateRef.current = { selectedDetId, lensObjectHeight, lensThresholdOffset, lensErosion, lensDetections };
+    });
+
     const runLensDetect = useCallback(async () => {
         setLensIsDetecting(true);
+        const { lensObjectHeight, lensThresholdOffset, lensErosion, selectedDetId, lensDetections } = stateRef.current;
         try {
-            const results = await lensService.detectObjects();
-            setLensDetections(Array.isArray(results) ? results : []);
+            const results = await lensService.detectObjects(lensObjectHeight, lensThresholdOffset, lensErosion);
+            const newDetections = Array.isArray(results) ? results : [];
+            
+            if (selectedDetId) {
+                const oldSel = lensDetections.find(d => d.workpiece_id === selectedDetId);
+                if (oldSel) {
+                    const { cx: oldX, cy: oldY } = getDetGeometry(oldSel);
+                    let closestId: string | null = null;
+                    let minDist = 20; 
+                    for (const nd of newDetections) {
+                        const { cx, cy } = getDetGeometry(nd);
+                        const dist = Math.hypot(cx - oldX, cy - oldY);
+                        if (dist < minDist) {
+                            minDist = dist;
+                            closestId = nd.workpiece_id;
+                        }
+                    }
+                    if (closestId && closestId !== selectedDetId) {
+                        setSelectedDetId(closestId);
+                    }
+                }
+            }
+            setLensDetections(newDetections);
         } catch (err) {
             console.error('Lens detect failed', err);
             setLensDetections([]);
         } finally {
             setLensIsDetecting(false);
         }
-    }, []);
+    }, [getDetGeometry]);
 
-    // Trigger detection on open
+    // Trigger detection on param change
+    useEffect(() => {
+        if (!isOpen) return;
+        const t = setTimeout(() => {
+            runLensDetect();
+        }, 300);
+        return () => clearTimeout(t);
+    }, [isOpen, lensObjectHeight, lensThresholdOffset, lensErosion, runLensDetect]);
+
+    // Initial reset on open
     useEffect(() => {
         if (isOpen) {
             setLensDetections([]);
+            setSelectedDetId(null);
             setLensRotOffset(0);
             setZoom(1);
             setOffsetX(0);
             setOffsetY(0);
-            setTimeout(runLensDetect, 80);
         }
-    }, [isOpen, runLensDetect]);
+    }, [isOpen]);
 
     const calcLensPlacement = useCallback((
         d: DetectionResult,
@@ -98,20 +190,8 @@ export const PlaceWithLensModal: React.FC<PlaceWithLensModalProps> = ({
         marginMm: number,
         rotOffset: number,
     ) => {
-        const [bx = 0, by = 0, bw = 10, bh = 10] = d.box ?? [0, 0, 10, 10];
-        const cx = d.center_x ?? (bx + bw / 2);
-        const cy = d.center_y ?? (by + bh / 2);
-        let wpW = bw, wpH = bh;
+        const { cx, cy, w: wpW, h: wpH } = getDetGeometry(d);
         let detRot = d.angle_deg ?? 0;
-        if (d.corners && d.corners.length >= 2) {
-            const c = d.corners;
-            if (d.corners.length >= 4) {
-                const edge0 = Math.hypot(c[1].x - c[0].x, c[1].y - c[0].y);
-                const edge1 = Math.hypot(c[2].x - c[1].x, c[2].y - c[1].y);
-                wpW = Math.max(edge0, edge1);
-                wpH = Math.min(edge0, edge1);
-            }
-        }
 
         let newScale = initialScalePct;
         let newW = bW * (newScale / 100);
@@ -134,7 +214,7 @@ export const PlaceWithLensModal: React.FC<PlaceWithLensModalProps> = ({
             scalePct: newScale,
             rotation: detRot + rotOffset
         };
-    }, [initialScalePct]);
+    }, [initialScalePct, getDetGeometry]);
 
     const findHit = useCallback((mmX: number, mmY: number): string | null => {
         // Point-in-polygon helper
@@ -164,13 +244,12 @@ export const PlaceWithLensModal: React.FC<PlaceWithLensModalProps> = ({
         let bestDist = THRESH;
 
         for (const d of lensDetections) {
-            const dcx = d.center_x ?? (d.box ? d.box[0] + d.box[2] / 2 : 0);
-            const dcy = d.center_y ?? (d.box ? d.box[1] + d.box[3] / 2 : 0);
+            const { cx: dcx, cy: dcy } = getDetGeometry(d);
             const dist = Math.hypot(mmX - dcx, mmY - dcy);
             if (dist < bestDist) { bestDist = dist; best = d.workpiece_id; }
         }
         return best;
-    }, [lensDetections]);
+    }, [lensDetections, getDetGeometry]);
 
     const handleCanvasClick = useCallback((mmX: number, mmY: number) => {
         const best = findHit(mmX, mmY);
@@ -183,19 +262,7 @@ export const PlaceWithLensModal: React.FC<PlaceWithLensModalProps> = ({
         } else {
             setSelectedDetId(best);
             const d = lensDetections.find(det => det.workpiece_id === best)!;
-            let objCx: number, objCy: number, objW: number, objH: number;
-            if (d.points && d.points.length > 0) {
-                objCx = d.points.reduce((a, p) => a + p.x, 0) / d.points.length;
-                objCy = d.points.reduce((a, p) => a + p.y, 0) / d.points.length;
-                const xs = d.points.map(p => p.x), ys = d.points.map(p => p.y);
-                objW = Math.max(...xs) - Math.min(...xs);
-                objH = Math.max(...ys) - Math.min(...ys);
-            } else {
-                const [bx, by, bw, bh] = d.box ?? [0, 0, 10, 10];
-                objCx = bx + bw / 2;
-                objCy = by + bh / 2;
-                objW = bw; objH = bh;
-            }
+            const { cx: objCx, cy: objCy, w: objW, h: objH } = getDetGeometry(d);
 
             const lBaseSc = Math.min((gridWidth - 32) / mmW, (gridHeight - 20) / mmH);
             const objCxPx = objCx * lBaseSc;
@@ -217,7 +284,7 @@ export const PlaceWithLensModal: React.FC<PlaceWithLensModalProps> = ({
             setOffsetY((gridHeight / 2) - DH + (objCy * lBaseSc * newZoom));
         }
         return best;
-    }, [findHit, lensDetections, selectedDetId, gridWidth, gridHeight, mmW, mmH]);
+    }, [findHit, lensDetections, selectedDetId, gridWidth, gridHeight, mmW, mmH, getDetGeometry]);
 
     const handleApply = () => {
         if (!selectedDetId) return;
@@ -230,7 +297,8 @@ export const PlaceWithLensModal: React.FC<PlaceWithLensModalProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-[200] flex flex-col bg-[#070712] overflow-hidden">
+        <div className="fixed inset-0 z-[200] flex justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="w-full max-w-md h-full bg-[#070712] flex flex-col shadow-2xl relative overflow-hidden">
             {/* Header */}
             <div className="flex-shrink-0 h-14 flex items-center gap-3 px-4 bg-black/80 border-b border-gray-800 backdrop-blur-xl">
                 <button
@@ -311,21 +379,7 @@ export const PlaceWithLensModal: React.FC<PlaceWithLensModalProps> = ({
                                     ctx.strokeRect(bx * t.baseScale, -(by + bh) * t.baseScale, bw * t.baseScale, bh * t.baseScale);
                                 }
 
-                                // ID Label
-                                const cx = d.center_x ?? (d.box ? d.box[0] + d.box[2] / 2 : 0);
-                                const cy = d.center_y ?? (d.box ? d.box[1] + d.box[3] / 2 : 0);
-                                const ocx = cx * t.baseScale;
-                                const ocy = -cy * t.baseScale;
-                                
-                                ctx.font = `bold ${10 / t.zoom}px Inter, sans-serif`;
-                                ctx.textAlign = 'center';
-                                ctx.textBaseline = 'middle';
-                                ctx.fillStyle = isSel ? '#00f0ff' : 'rgba(0,240,255,0.6)';
-                                // Subtle shadow for legibility
-                                ctx.shadowColor = 'black';
-                                ctx.shadowBlur = 4 / t.zoom;
-                                ctx.fillText(d.workpiece_id.toString().substring(0, 8), ocx, ocy);
-                                ctx.shadowBlur = 0;
+                                // Object ID rendering removed per user request
 
                                 if (isSel) {
                                     const cx = d.center_x ?? (d.box ? d.box[0] + d.box[2] / 2 : 0);
@@ -356,11 +410,22 @@ export const PlaceWithLensModal: React.FC<PlaceWithLensModalProps> = ({
                                 if (placement.rotation) {
                                     ctx.rotate(placement.rotation * Math.PI / 180);
                                 }
-                                ctx.fillStyle = fileKind === 'bitmap' ? 'rgba(255,255,255,0.1)' : 'rgba(255,0,127,0.1)';
-                                ctx.strokeStyle = fileKind === 'bitmap' ? 'rgba(255,255,255,0.5)' : '#ff007f';
-                                ctx.lineWidth = 1 / t.zoom;
-                                ctx.fillRect(-gWpx / 2, -gHpx / 2, gWpx, gHpx);
-                                ctx.strokeRect(-gWpx / 2, -gHpx / 2, gWpx, gHpx);
+                                
+                                if (designImg) {
+                                    ctx.globalAlpha = fileKind === 'bitmap' ? 0.8 : 0.9;
+                                    ctx.drawImage(designImg, -gWpx / 2, -gHpx / 2, gWpx, gHpx);
+                                    if (fileKind === 'svg') {
+                                        ctx.strokeStyle = '#ff007f';
+                                        ctx.lineWidth = 1 / t.zoom;
+                                        ctx.strokeRect(-gWpx / 2, -gHpx / 2, gWpx, gHpx);
+                                    }
+                                } else {
+                                    ctx.fillStyle = fileKind === 'bitmap' ? 'rgba(255,255,255,0.1)' : 'rgba(255,0,127,0.1)';
+                                    ctx.strokeStyle = fileKind === 'bitmap' ? 'rgba(255,255,255,0.5)' : '#ff007f';
+                                    ctx.lineWidth = 1 / t.zoom;
+                                    ctx.fillRect(-gWpx / 2, -gHpx / 2, gWpx, gHpx);
+                                    ctx.strokeRect(-gWpx / 2, -gHpx / 2, gWpx, gHpx);
+                                }
                                 
                                 // Orientation indicator
                                 ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(gWpx / 2, 0); ctx.strokeStyle = '#00f0ff'; ctx.stroke();
@@ -387,6 +452,34 @@ export const PlaceWithLensModal: React.FC<PlaceWithLensModalProps> = ({
 
                 {/* Options */}
                 <div className="px-4 pb-4 space-y-4">
+                    {/* Detection tuning */}
+                    <div className="flex flex-col gap-3 p-3 bg-gray-900/50 rounded-xl border border-gray-800">
+                        <div className="flex justify-between items-center">
+                            <span className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">Detection Tuning</span>
+                        </div>
+                        <div className="flex flex-col gap-4">
+                            <div className="flex items-center gap-4">
+                                <span className="text-[9px] text-gray-400 uppercase font-bold w-16">Height</span>
+                                <input type="number" value={lensObjectHeight} onChange={e => setLensObjectHeight(Number(e.target.value))} className="w-20 bg-black border border-gray-800 text-gray-300 text-xs rounded-lg px-2 py-1 outline-none focus:border-miami-cyan text-center" />
+                                <span className="text-[9px] text-gray-500 font-mono">mm</span>
+                            </div>
+                            <div className="flex flex-col gap-1.5">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-[9px] text-gray-400 uppercase font-bold">Threshold Offset</span>
+                                    <span className="text-xs font-mono text-white">{lensThresholdOffset}</span>
+                                </div>
+                                <input type="range" min="-128" max="128" value={lensThresholdOffset} onChange={e => setLensThresholdOffset(Number(e.target.value))} className="w-full accent-miami-cyan" />
+                            </div>
+                            <div className="flex flex-col gap-1.5">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-[9px] text-gray-400 uppercase font-bold">Erosion</span>
+                                    <span className="text-xs font-mono text-white">{lensErosion}</span>
+                                </div>
+                                <input type="range" min="0" max="20" value={lensErosion} onChange={e => setLensErosion(Number(e.target.value))} className="w-full accent-miami-cyan" />
+                            </div>
+                        </div>
+                    </div>
+
                     <ToggleSwitch 
                         label="Auto-Size to Object"
                         checked={lensAutoSize}
@@ -425,6 +518,7 @@ export const PlaceWithLensModal: React.FC<PlaceWithLensModalProps> = ({
                         Apply Placement
                     </button>
                 </div>
+            </div>
             </div>
         </div>
     );

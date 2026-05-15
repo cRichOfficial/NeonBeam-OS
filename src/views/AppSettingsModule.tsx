@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import axios from 'axios';
 import { useAppSettingsStore } from '../store/appSettingsStore';
 import { NumericInput } from '../components/NumericInput';
 import { View } from '../components/layout/View';
@@ -29,12 +30,13 @@ function useUrlTest() {
         }
         setStatus('testing');
         try {
-            const res = await fetch(`${url}/api/health`, {
-                signal: AbortSignal.timeout(3000),
+            const cleanUrl = url.endsWith('/') ? url.slice(0, -1) : url;
+            const res = await axios.get(`${cleanUrl}/api/health`, {
+                timeout: 3000,
             });
-            // Accept only genuine 2xx responses; anything else (404, 502…) = unreachable
-            setStatus(res.ok ? 'ok' : 'error');
-        } catch {
+            setStatus(res.status >= 200 && res.status < 300 ? 'ok' : 'error');
+        } catch (err) {
+            console.error('URL test failed for', url, err);
             setStatus('error');
         }
     }, []);
@@ -60,8 +62,7 @@ const DiscoverySheet: React.FC<{
     for (const r of results) { (groups[r.service] ??= []).push(r); }
 
     const label: Record<string, string> = {
-        hardware_comm:  '🖥 Core Backend (hardware_comm)',
-        machine_vision: '📷 Lens Backend (machine_vision)',
+        hardware_comm:  '🖥 Core Backend (hardware_comm)'
     };
 
     return (
@@ -267,7 +268,6 @@ export const AppSettingsModule: React.FC = () => {
 
     const adoptDiscovery = useCallback((service: string, url: string) => {
         if (service === 'hardware_comm')  updateSettings({ coreApiUrl: url });
-        if (service === 'machine_vision') updateSettings({ lensApiUrl: url });
         setScanResults(null);
     }, [updateSettings]);
 

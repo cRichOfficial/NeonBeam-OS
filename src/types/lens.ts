@@ -1,14 +1,12 @@
 export interface CalibrationPoint {
-    id: number;
-    physical_x: number;
-    physical_y: number;
-    size_mm?: number;
-    guide_mm?: number;
-    anchor?: string;
+    id: string;
+    position_x_mm: number;
+    position_y_mm: number;
+    size_mm: number;
 }
 
 export interface CalibrationRequest {
-    tags: CalibrationPoint[];
+    points: CalibrationPoint[];
 }
 
 export interface DetectionResult {
@@ -45,39 +43,14 @@ export interface TransformResponse {
 
 export interface LensHealthResponse {
     status: string;
-    service: string;
-    detector: string;
-    camera_active: boolean;
-    lens_calibrated: boolean;
-    homography_calibrated: boolean;
+    camera_detected: boolean;
+    mock_mode: boolean;
 }
 
-export interface LensSessionStatus {
-    session_id?: string;
-    captures_done: number;
-    total_target: number;
-    max_captures: number;
-    zones_covered: string[];
-    zones_remaining: string[];
-    can_finish: boolean;
-    preview_url?: string;
-    success?: boolean;
-    zone_hit?: string;
-    message?: string;
-    instruction?: string;
-    error?: string;
-    // Status-only fields (no active session)
-    status?: string;
-    lens_model?: string;
-}
 
-export interface LensCalibrationResult {
-    status: string;
-    model: string;
-    rms_error: number;
-    camera_matrix: number[][];
-    dist_coeffs: number[];
-    captures_used: number;
-    zones_covered: string[];
-    note: string;
+
+export interface CameraSettings {
+    iso: number;
+    exposure_time: number;
+    camera_mounting_height_mm: number;
 }

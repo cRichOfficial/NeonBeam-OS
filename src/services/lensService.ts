@@ -7,8 +7,7 @@ import type {
     TransformRequest, 
     TransformResponse,
     LensHealthResponse,
-    LensSessionStatus,
-    LensCalibrationResult,
+    CameraSettings,
 } from '../types/lens';
 
 class LensService {
@@ -42,31 +41,31 @@ class LensService {
         return `${this.baseUrl}/api/lens/frame?t=${Date.now()}`;
     }
 
-    async detectObjects(): Promise<DetectionResult[]> {
-        const res = await axios.get(`${this.baseUrl}/api/lens/detect`);
+    async detectObjects(objectHeightMm: number = 0, thresholdOffset: number = 0, erosionIterations: number = 1): Promise<DetectionResult[]> {
+        const res = await axios.get(`${this.baseUrl}/api/camera/detect/objects`, {
+            params: {
+                object_height_mm: objectHeightMm,
+                threshold_offset: thresholdOffset,
+                erosion_iterations: erosionIterations
+            }
+        });
         const raw = res.data;
 
-        // The API returns { status, workpieces: [...] } with backend-specific
-        // field names.  Normalize into our DetectionResult interface.
-        const items: any[] = Array.isArray(raw)
-            ? raw                        // legacy: plain array
-            : Array.isArray(raw?.workpieces)
-                ? raw.workpieces         // current: { workpieces: [...] }
-                : [];
+        const items: any[] = Array.isArray(raw?.objects) ? raw.objects : [];
 
         return items.map((wp: any): DetectionResult => {
-            // box_mm = [xmin, ymin, xmax, ymax] → box = [x, y, w, h]
             let box: [number, number, number, number] | undefined;
             let centerX: number | undefined;
             let centerY: number | undefined;
-            if (Array.isArray(wp.box_mm) && wp.box_mm.length >= 4) {
-                const [xmin, ymin, xmax, ymax] = wp.box_mm;
-                box = [xmin, ymin, xmax - xmin, ymax - ymin];
-                centerX = (xmin + xmax) / 2;
-                centerY = (ymin + ymax) / 2;
+            if (Array.isArray(wp.bbox_mm) && wp.bbox_mm.length >= 4) {
+                const [x, y, w, h] = wp.bbox_mm;
+                box = [x, y, w, h];
+            }
+            if (Array.isArray(wp.center_mm) && wp.center_mm.length >= 2) {
+                centerX = wp.center_mm[0];
+                centerY = wp.center_mm[1];
             }
 
-            // corners_mm / segmentation_mm are [[x,y], ...] → {x, y}[]
             const mapPts = (arr: any): Array<{ x: number; y: number }> | undefined => {
                 if (!Array.isArray(arr) || arr.length === 0) return undefined;
                 return arr.map((p: any) =>
@@ -74,28 +73,24 @@ class LensService {
                 );
             };
 
-            // Prefer segmentation for shape fidelity, fall back to corners
-            const points = mapPts(wp.segmentation_mm) ?? mapPts(wp.corners_mm);
-            // Also keep corners separately for oriented width/height calculation
+            const points = mapPts(wp.contour_mm);
             const corners = mapPts(wp.corners_mm);
 
             return {
-                workpiece_id: wp.id ?? wp.workpiece_id ?? 'unknown',
-                label:        wp.class ?? wp.label,
-                confidence:   wp.confidence,
+                workpiece_id: String(wp.id ?? 'unknown'),
                 box,
                 points,
                 corners,
                 center_x:     centerX,
                 center_y:     centerY,
-                angle_deg:    wp.angle_deg,
+                angle_deg:    wp.rotation_deg,
             };
         });
     }
 
-    async calibrate(tags: CalibrationPoint[]) {
-        const payload: CalibrationRequest = { tags };
-        const res = await axios.post(`${this.baseUrl}/api/lens/calibrate`, payload);
+    async calibrate(points: CalibrationPoint[]) {
+        const payload: CalibrationRequest = { points };
+        const res = await axios.post(`${this.baseUrl}/api/camera/calibrate/apriltags`, payload);
         return res.data;
     }
 
@@ -122,84 +117,29 @@ class LensService {
         return res.data;
     }
 
-    getTagUrl(tagId: number, sizeMm: number = 50, dpi: number = 300, guideDistanceMm?: number) {
-        let url = `${this.baseUrl}/api/apriltag/generate/${tagId}?size_mm=${sizeMm}&dpi=${dpi}`;
-        if (guideDistanceMm !== undefined && guideDistanceMm > 0) {
-            url += `&guide_distance_mm=${guideDistanceMm}`;
-        }
-        return url;
-    }
+    // ── Camera Settings ──
 
-    async generateTag(tagId: number, sizeMm: number = 50, dpi: number = 300, paperWidthIn: number = 8.5, paperHeightIn: number = 11.0, guideDistanceMm?: number): Promise<Blob> {
-        const params: any = { size_mm: sizeMm, dpi, paper_width_in: paperWidthIn, paper_height_in: paperHeightIn };
-        if (guideDistanceMm !== undefined && guideDistanceMm > 0) params.guide_distance_mm = guideDistanceMm;
-        const res = await axios.get(`${this.baseUrl}/api/apriltag/generate/${tagId}`, {
-            params,
-            responseType: 'blob'
-        });
+    async getCameraSettings(): Promise<CameraSettings> {
+        const res = await axios.get(`${this.baseUrl}/api/camera/settings`);
         return res.data;
     }
 
-    async batchGenerateTags(startId: number = 0, count: number = 4, sizeMm: number = 50, dpi: number = 300, paperWidthIn: number = 8.5, paperHeightIn: number = 11.0, guideDistanceMm?: number): Promise<Blob> {
-        const params: any = { start_id: startId, count, size_mm: sizeMm, dpi, paper_width_in: paperWidthIn, paper_height_in: paperHeightIn };
-        if (guideDistanceMm !== undefined && guideDistanceMm > 0) params.guide_distance_mm = guideDistanceMm;
-        const res = await axios.get(`${this.baseUrl}/api/apriltag/batch`, {
-            params,
-            responseType: 'blob'
-        });
+    async updateCameraSettings(settings: CameraSettings): Promise<CameraSettings> {
+        const res = await axios.post(`${this.baseUrl}/api/camera/settings`, settings);
         return res.data;
-    }
-
-    // ── Lens Distortion Calibration ──
-
-    getCheckerboardUrl(rows: number = 9, cols: number = 6, squareMm: number = 25, dpi: number = 300) {
-        return `${this.baseUrl}/api/lens/checkerboard/generate?rows=${rows}&cols=${cols}&square_mm=${squareMm}&dpi=${dpi}`;
-    }
-
-    async lensCalibrationStart(rows: number = 9, cols: number = 6, squareMm: number = 25): Promise<LensSessionStatus> {
-        const res = await axios.post(`${this.baseUrl}/api/lens/calibrate-lens/start`, null, {
-            params: { rows, cols, square_mm: squareMm }
-        });
-        return res.data;
-    }
-
-    async lensCalibrationCapture(): Promise<LensSessionStatus> {
-        const res = await axios.post(`${this.baseUrl}/api/lens/calibrate-lens/capture`);
-        return res.data;
-    }
-
-    async lensCalibrationFinish(): Promise<LensCalibrationResult> {
-        const res = await axios.post(`${this.baseUrl}/api/lens/calibrate-lens/finish`);
-        return res.data;
-    }
-
-    async lensCalibrationStatus(): Promise<LensSessionStatus> {
-        const res = await axios.get(`${this.baseUrl}/api/lens/calibrate-lens/status`);
-        return res.data;
-    }
-
-    async lensCalibrationReset(): Promise<{ status: string; message: string }> {
-        const res = await axios.delete(`${this.baseUrl}/api/lens/calibrate-lens`);
-        return res.data;
-    }
-
-    getLensPreviewUrl() {
-        return `${this.baseUrl}/api/lens/calibrate-lens/preview?t=${Date.now()}`;
     }
 
     async getCalibrationTags(): Promise<CalibrationPoint[]> {
-        const res = await axios.get(`${this.baseUrl}/api/lens/calibration/tags`);
-        const rawTags = res.data?.tags ?? (Array.isArray(res.data) ? res.data : []);
+        const res = await axios.get(`${this.baseUrl}/api/camera/calibrate/apriltags`);
+        const rawPoints = res.data?.points ?? (Array.isArray(res.data) ? res.data : []);
         
-        // Aggressively normalize backend fields to frontend fields
-        return rawTags.map((t: any, index: number) => {
-            const id = t.id !== undefined ? t.id : (t.tag_id !== undefined ? t.tag_id : index);
+        return rawPoints.map((t: any, index: number) => {
+            const id = t.id !== undefined ? String(t.id) : String(index);
             return {
-                id: Number(id),
-                physical_x: t.physical_x ?? t.machine_x ?? t.x ?? t.pos_x ?? 0,
-                physical_y: t.physical_y ?? t.machine_y ?? t.y ?? t.pos_y ?? 0,
-                size_mm: t.size_mm ?? t.size ?? t.dimension ?? 30,
-                anchor: t.anchor ?? 'center'
+                id,
+                position_x_mm: t.position_x_mm ?? 0,
+                position_y_mm: t.position_y_mm ?? 0,
+                size_mm: t.size_mm ?? 30
             };
         });
     }
